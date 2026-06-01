@@ -22,7 +22,7 @@ type ListOrdersRequest struct {
 // Responses
 // ----------------------------------------------------------------------------
 
-type OrderResponse struct {
+type response struct {
 	ID        shared.OrderID `json:"id"`
 	UserID    shared.UserID  `json:"user_id"`
 	Amount    int64          `json:"amount"`
@@ -32,10 +32,10 @@ type OrderResponse struct {
 	UpdatedAt string         `json:"updated_at"`
 }
 
-type ListOrdersResponse = shared.Page[OrderResponse]
+type listResponse = shared.Page[response]
 
-func toOrderResponse(o *Order) OrderResponse {
-	return OrderResponse{
+func toOrderResponse(o *Order) response {
+	return response{
 		ID:        o.ID(),
 		UserID:    o.UserID(),
 		Amount:    o.Amount().Amount(),
@@ -46,8 +46,8 @@ func toOrderResponse(o *Order) OrderResponse {
 	}
 }
 
-func toOrderResponses(os []*Order) []OrderResponse {
-	out := make([]OrderResponse, len(os))
+func toOrderResponses(os []*Order) []response {
+	out := make([]response, len(os))
 	for i, o := range os {
 		out[i] = toOrderResponse(o)
 	}

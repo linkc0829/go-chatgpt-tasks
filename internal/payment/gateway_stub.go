@@ -15,7 +15,7 @@ type StubGateway struct{}
 
 func NewStubGateway() *StubGateway { return &StubGateway{} }
 
-func (g *StubGateway) Charge(_ context.Context, req ChargeRequest) (ChargeResult, error) {
+func (g *StubGateway) Charge(_ context.Context, _ ChargeRequest) (ChargeResult, error) {
 	return ChargeResult{
 		ProviderRef: "stub_" + uuid.NewString(),
 		Approved:    true,

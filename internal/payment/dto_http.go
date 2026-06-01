@@ -2,7 +2,7 @@ package payment
 
 import "github.com/linkc0829/go-backend-template/internal/shared"
 
-type PaymentResponse struct {
+type response struct {
 	ID        shared.PaymentID `json:"id"`
 	UserID    shared.UserID    `json:"user_id"`
 	OrderID   shared.OrderID   `json:"order_id"`
@@ -13,8 +13,8 @@ type PaymentResponse struct {
 	UpdatedAt string           `json:"updated_at"`
 }
 
-func toPaymentResponse(p *Payment) PaymentResponse {
-	return PaymentResponse{
+func toPaymentResponse(p *Payment) response {
+	return response{
 		ID:        p.ID(),
 		UserID:    p.UserID(),
 		OrderID:   p.OrderID(),

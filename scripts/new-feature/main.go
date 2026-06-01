@@ -71,6 +71,7 @@ func main() {
 	// Create a sqlc query stub.
 	sqlStub := filepath.Join(root, "sql", "queries", name+".sql")
 	if _, err := os.Stat(sqlStub); os.IsNotExist(err) {
+		// #nosec G306 -- generated source files should be group/world-readable.
 		if err := os.WriteFile(sqlStub, []byte(sqlStubContent(name)), 0o644); err != nil {
 			log.Fatalf("create sql stub: %v", err)
 		}
@@ -194,6 +195,7 @@ func copyTree(src, dst string, transform func(string) string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
+		// #nosec G306 -- generated source files should be group/world-readable.
 		return os.WriteFile(target, data, 0o644)
 	})
 }

@@ -106,6 +106,17 @@ linters-settings:
           - pkg: "github.com/linkc0829/go-backend-template/internal/payment"
             desc: "Cross-feature import forbidden."
 
+      no-cross-feature-task:
+        files:
+          - "**/internal/task/**"
+        deny:
+          - pkg: "github.com/linkc0829/go-backend-template/internal/order"
+            desc: "Cross-feature import forbidden."
+          - pkg: "github.com/linkc0829/go-backend-template/internal/payment"
+            desc: "Cross-feature import forbidden."
+          - pkg: "github.com/linkc0829/go-backend-template/internal/user"
+            desc: "Cross-feature import forbidden."
+
       # ------------------------------------------------------------------
       # Shared kernel: zero dependencies (only stdlib + minimal helpers)
       # ------------------------------------------------------------------

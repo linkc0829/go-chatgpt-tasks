@@ -88,7 +88,7 @@ func TestHandler_CreateOrder(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusCreated, w.Code)
-	var resp OrderResponse
+	var resp response
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, int64(2500), resp.Amount)
 	assert.Equal(t, "USD", resp.Currency)

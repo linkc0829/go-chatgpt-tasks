@@ -155,7 +155,7 @@ func (h *Handler) list(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, ListOrdersResponse{
+	c.JSON(http.StatusOK, listResponse{
 		Items:  toOrderResponses(orders),
 		Total:  total,
 		Limit:  p.Limit,

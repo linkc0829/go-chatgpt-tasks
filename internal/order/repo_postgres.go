@@ -59,8 +59,8 @@ func (r *PostgresRepo) FindByID(ctx context.Context, id shared.OrderID) (*Order,
 func (r *PostgresRepo) ListByUser(ctx context.Context, userID shared.UserID, p shared.Pagination) ([]*Order, int64, error) {
 	rows, err := r.q.ListOrdersByUser(ctx, sqlc.ListOrdersByUserParams{
 		UserID:     postgres.UUIDToPg(uuid.UUID(userID)),
-		PageLimit:  int32(p.Limit),
-		PageOffset: int32(p.Offset),
+		PageLimit:  int32(p.Limit),  //nolint:gosec // shared pagination clamps to maxLimit=100.
+		PageOffset: int32(p.Offset), //nolint:gosec // shared pagination normalizes to non-negative API bounds.
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("list orders: %w", err)

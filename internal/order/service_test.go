@@ -89,7 +89,7 @@ func TestService_Create(t *testing.T) {
 			name:    "zero_amount_rejected",
 			input:   CreateInput{UserID: uid, Amount: 0, Currency: "USD"},
 			setup:   func(_ *fakeRepo, u *fakeUserLookup) { u.exists = true },
-			wantErr: shared.ErrInvalidAmount,
+			wantErr: ErrInvalidAmount,
 		},
 		{
 			name:    "empty_currency_rejected",

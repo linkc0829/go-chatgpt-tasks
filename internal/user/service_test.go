@@ -25,7 +25,7 @@ type fakeRepo struct {
 	saveCalls      int
 }
 
-func (f *fakeRepo) Save(_ context.Context, u *User) error {
+func (f *fakeRepo) Save(_ context.Context, _ *User) error {
 	f.saveCalls++
 	return f.saveErr
 }
@@ -42,8 +42,8 @@ type fakeHasher struct {
 	compareErr error
 }
 
-func (f *fakeHasher) Hash(_ string) (string, error)   { return f.hashOut, f.hashErr }
-func (f *fakeHasher) Compare(_, _ string) error       { return f.compareErr }
+func (f *fakeHasher) Hash(_ string) (string, error) { return f.hashOut, f.hashErr }
+func (f *fakeHasher) Compare(_, _ string) error     { return f.compareErr }
 
 type fakeTokens struct {
 	out string
@@ -79,7 +79,7 @@ func TestService_Register(t *testing.T) {
 		{
 			name:  "email_already_exists",
 			input: RegisterInput{Email: "alice@example.com", Password: "pa55word!", DisplayName: "Alice"},
-			setup: func(r *fakeRepo, h *fakeHasher, _ *fakeTokens) {
+			setup: func(r *fakeRepo, _ *fakeHasher, _ *fakeTokens) {
 				existing, _ := NewUser("alice@example.com", "h", "Alice")
 				r.findByEmailRet = existing
 			},

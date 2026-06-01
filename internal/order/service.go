@@ -64,7 +64,7 @@ func (s *Service) Pay(ctx context.Context, id shared.OrderID, requesterID shared
 	}
 
 	if err := s.payment.Charge(ctx, o.UserID(), o.ID(), o.Amount()); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrPaymentFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrPaymentFailed, err)
 	}
 
 	if err := o.MarkPaid(); err != nil {
