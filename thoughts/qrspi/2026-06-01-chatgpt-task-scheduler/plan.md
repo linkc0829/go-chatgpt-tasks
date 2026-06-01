@@ -843,12 +843,12 @@ return runners
 - [x] `make lint`, `go build ./...`.
 
 #### Manual
-- [ ] `make run` (Postgres+Redis). Inspector: `task.create` past `scheduled_at` → `task.status`
+- [x] `make run` (Postgres+Redis). Inspector: `task.create` past `scheduled_at` → `task.status`
   becomes `"success"` within ~10s (ticket's primary check; treat `success` as the ticket's `completed`).
-- [ ] Future-time create + `task.cancel` → `"cancelled"`; the cancelled run is not executed.
-- [ ] Force failure: temporarily set `StubExecutor.failFunc` to always error → after `maxAttempts`
+- [x] Future-time create + `task.cancel` → `"cancelled"`; the cancelled run is not executed.
+- [x] Force failure: temporarily set `StubExecutor.failFunc` to always error → after `maxAttempts`
   the run is `failed` and `redis-cli XLEN task:dlq` ≥ 1.
-- [ ] `redis-cli XPENDING task:runs task-workers` → 0 pending after processing (all Ack'd).
+- [x] `redis-cli XPENDING task:runs task-workers` → 0 pending after processing (all Ack'd).
 
 ---
 

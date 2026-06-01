@@ -15,6 +15,10 @@ func NewStubExecutor(log *zap.Logger) *StubExecutor {
 	return &StubExecutor{log: log}
 }
 
+func (e *StubExecutor) SetFailFunc(fn func(*JobRun) error) {
+	e.failFunc = fn
+}
+
 func (e *StubExecutor) Execute(ctx context.Context, r *JobRun) error {
 	if err := ctx.Err(); err != nil {
 		return err
