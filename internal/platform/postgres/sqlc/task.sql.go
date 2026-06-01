@@ -25,7 +25,7 @@ func (q *Queries) CountJobRuns(ctx context.Context) (int64, error) {
 const findDueJobRuns = `-- name: FindDueJobRuns :many
 SELECT id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
 FROM job_runs
-WHERE time_bucket = $1
+WHERE time_bucket <= $1
   AND status = 'pending'
   AND scheduled_at <= $2
 ORDER BY scheduled_at

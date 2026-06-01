@@ -30,7 +30,7 @@ SELECT COUNT(*) FROM job_runs;
 -- name: FindDueJobRuns :many
 SELECT id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
 FROM job_runs
-WHERE time_bucket = sqlc.arg(time_bucket)
+WHERE time_bucket <= sqlc.arg(time_bucket)
   AND status = 'pending'
   AND scheduled_at <= sqlc.arg(due_before)
 ORDER BY scheduled_at

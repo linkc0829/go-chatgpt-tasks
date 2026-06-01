@@ -83,6 +83,7 @@ func load(requireJWT bool) (*Config, error) {
 	v.SetDefault("redis.addr", "localhost:6379")
 	v.SetDefault("redis.db", 0)
 	v.SetDefault("jwt.issuer", "go-backend-template")
+	v.SetDefault("jwt.secret", "local-dev-secret")
 	v.SetDefault("jwt.ttl", "24h")
 	v.SetDefault("otel.enabled", false)
 	v.SetDefault("otel.endpoint", "localhost:4317")
