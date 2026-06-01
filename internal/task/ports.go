@@ -20,3 +20,7 @@ type Repo interface {
 	InsertRunIfAbsent(ctx context.Context, r *JobRun) (created bool, err error)
 	FindTerminalRecurringRuns(ctx context.Context, since time.Time, limit int32) ([]NextRunSpec, error)
 }
+
+type Queue interface {
+	Enqueue(ctx context.Context, m JobRunMsg) error
+}

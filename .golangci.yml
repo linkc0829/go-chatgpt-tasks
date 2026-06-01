@@ -79,41 +79,17 @@ linters-settings:
       # glob-based rule was tried and rejected because it mis-blocks
       # internal/<feature>/mocks subpackages from being imported by tests.
       # ------------------------------------------------------------------
-      no-cross-feature-order:
-        files:
-          - "**/internal/order/**"
-        deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/payment"
-            desc: "Cross-feature import forbidden. Define a port in order/ports.go and inject in bootstrap."
-          - pkg: "github.com/linkc0829/go-backend-template/internal/user"
-            desc: "Cross-feature import forbidden. Define a port in order/ports.go and inject in bootstrap."
-
-      no-cross-feature-payment:
-        files:
-          - "**/internal/payment/**"
-        deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/order"
-            desc: "Cross-feature import forbidden."
-          - pkg: "github.com/linkc0829/go-backend-template/internal/user"
-            desc: "Cross-feature import forbidden."
-
       no-cross-feature-user:
         files:
           - "**/internal/user/**"
         deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/order"
-            desc: "Cross-feature import forbidden."
-          - pkg: "github.com/linkc0829/go-backend-template/internal/payment"
+          - pkg: "github.com/linkc0829/go-backend-template/internal/task"
             desc: "Cross-feature import forbidden."
 
       no-cross-feature-task:
         files:
           - "**/internal/task/**"
         deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/order"
-            desc: "Cross-feature import forbidden."
-          - pkg: "github.com/linkc0829/go-backend-template/internal/payment"
-            desc: "Cross-feature import forbidden."
           - pkg: "github.com/linkc0829/go-backend-template/internal/user"
             desc: "Cross-feature import forbidden."
 

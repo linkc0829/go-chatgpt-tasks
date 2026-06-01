@@ -16,6 +16,12 @@ func (a *App) Shutdown(ctx context.Context) {
 		a.logger.Error("http server shutdown", zap.Error(err))
 	}
 
+	// Background runners use Redis/Postgres, so stop them before dependencies.
+	if a.bgCancel != nil {
+		a.bgCancel()
+	}
+	a.bgWG.Wait()
+
 	// OTel — flush spans before tearing down anything that may emit.
 	if err := a.otelShutdown(ctx); err != nil {
 		a.logger.Error("otel shutdown", zap.Error(err))

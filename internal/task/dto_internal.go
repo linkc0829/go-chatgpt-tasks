@@ -97,6 +97,11 @@ type NextRunSpec struct {
 	Interval    time.Duration
 }
 
+type JobRunMsg struct {
+	JobRunID string `json:"job_run_id"`
+	Attempts int    `json:"attempts"`
+}
+
 func nextRunSpecFromSqlc(r sqlc.ListTerminalRecurringRunsRow) NextRunSpec {
 	return NextRunSpec{
 		JobID:       shared.JobID(postgres.PgToUUID(r.JobID)),

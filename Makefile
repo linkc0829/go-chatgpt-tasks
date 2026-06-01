@@ -1,13 +1,13 @@
 .PHONY: help build run test test-unit test-integration lint fmt vet \
         sqlc-generate migrate-up migrate-down migrate-create mock-gen tidy clean \
-        new-feature openapi-lint hooks-install verify
+        openapi-lint hooks-install verify
 
 # ============================================================================
 # Variables
 # ============================================================================
 BINARY_NAME := api
 BUILD_DIR   := ./bin
-DB_URL      := postgres://postgres:postgres@localhost:5432/app?sslmode=disable
+DB_URL      := postgres://postgres:pgadmin@localhost:5432/chatpgt-tasks?sslmode=disable
 MIGRATIONS  := ./migrations
 
 # ============================================================================
@@ -77,13 +77,6 @@ migrate-down: ## Rollback last migration
 
 migrate-create: ## Create new migration: make migrate-create NAME=add_xxx
 	migrate create -ext sql -dir $(MIGRATIONS) -seq $(NAME)
-
-# ============================================================================
-# Scaffolding
-# ============================================================================
-new-feature: ## Scaffold a new feature: make new-feature name=foo
-	@if [ -z "$(name)" ]; then echo "usage: make new-feature name=<snake_case>"; exit 1; fi
-	go run ./scripts/new-feature -name='$(name)'
 
 # ============================================================================
 # API contract

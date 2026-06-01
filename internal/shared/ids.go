@@ -25,46 +25,36 @@ import (
 // ----------------------------------------------------------------------------
 
 type UserID uuid.UUID
-type OrderID uuid.UUID
-type PaymentID uuid.UUID
 type JobID uuid.UUID
 type JobRunID uuid.UUID
 type RunEventID uuid.UUID
 
-func NewUserID() UserID       { return UserID(uuid.New()) }
-func NewOrderID() OrderID     { return OrderID(uuid.New()) }
-func NewPaymentID() PaymentID { return PaymentID(uuid.New()) }
-func NewJobID() JobID         { return JobID(uuid.New()) }
-func NewJobRunID() JobRunID   { return JobRunID(uuid.New()) }
+func NewUserID() UserID     { return UserID(uuid.New()) }
+func NewJobID() JobID       { return JobID(uuid.New()) }
+func NewJobRunID() JobRunID { return JobRunID(uuid.New()) }
 func NewRunEventID() RunEventID {
 	return RunEventID(uuid.New())
 }
 
-func (id UserID) String() string    { return uuid.UUID(id).String() }
-func (id OrderID) String() string   { return uuid.UUID(id).String() }
-func (id PaymentID) String() string { return uuid.UUID(id).String() }
-func (id JobID) String() string     { return uuid.UUID(id).String() }
-func (id JobRunID) String() string  { return uuid.UUID(id).String() }
+func (id UserID) String() string   { return uuid.UUID(id).String() }
+func (id JobID) String() string    { return uuid.UUID(id).String() }
+func (id JobRunID) String() string { return uuid.UUID(id).String() }
 func (id RunEventID) String() string {
 	return uuid.UUID(id).String()
 }
 
-func (id UserID) IsZero() bool    { return uuid.UUID(id) == uuid.Nil }
-func (id OrderID) IsZero() bool   { return uuid.UUID(id) == uuid.Nil }
-func (id PaymentID) IsZero() bool { return uuid.UUID(id) == uuid.Nil }
-func (id JobID) IsZero() bool     { return uuid.UUID(id) == uuid.Nil }
-func (id JobRunID) IsZero() bool  { return uuid.UUID(id) == uuid.Nil }
+func (id UserID) IsZero() bool   { return uuid.UUID(id) == uuid.Nil }
+func (id JobID) IsZero() bool    { return uuid.UUID(id) == uuid.Nil }
+func (id JobRunID) IsZero() bool { return uuid.UUID(id) == uuid.Nil }
 func (id RunEventID) IsZero() bool {
 	return uuid.UUID(id) == uuid.Nil
 }
 
 // ---------- JSON / text ----------
 
-func (id UserID) MarshalText() ([]byte, error)    { return uuid.UUID(id).MarshalText() }
-func (id OrderID) MarshalText() ([]byte, error)   { return uuid.UUID(id).MarshalText() }
-func (id PaymentID) MarshalText() ([]byte, error) { return uuid.UUID(id).MarshalText() }
-func (id JobID) MarshalText() ([]byte, error)     { return uuid.UUID(id).MarshalText() }
-func (id JobRunID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
+func (id UserID) MarshalText() ([]byte, error)   { return uuid.UUID(id).MarshalText() }
+func (id JobID) MarshalText() ([]byte, error)    { return uuid.UUID(id).MarshalText() }
+func (id JobRunID) MarshalText() ([]byte, error) { return uuid.UUID(id).MarshalText() }
 func (id RunEventID) MarshalText() ([]byte, error) {
 	return uuid.UUID(id).MarshalText()
 }
@@ -75,24 +65,6 @@ func (id *UserID) UnmarshalText(b []byte) error {
 		return err
 	}
 	*id = UserID(u)
-	return nil
-}
-
-func (id *OrderID) UnmarshalText(b []byte) error {
-	u, err := uuid.ParseBytes(b)
-	if err != nil {
-		return err
-	}
-	*id = OrderID(u)
-	return nil
-}
-
-func (id *PaymentID) UnmarshalText(b []byte) error {
-	u, err := uuid.ParseBytes(b)
-	if err != nil {
-		return err
-	}
-	*id = PaymentID(u)
 	return nil
 }
 
@@ -125,11 +97,9 @@ func (id *RunEventID) UnmarshalText(b []byte) error {
 
 // ---------- database/sql round-tripping ----------
 
-func (id UserID) Value() (driver.Value, error)    { return uuid.UUID(id).Value() }
-func (id OrderID) Value() (driver.Value, error)   { return uuid.UUID(id).Value() }
-func (id PaymentID) Value() (driver.Value, error) { return uuid.UUID(id).Value() }
-func (id JobID) Value() (driver.Value, error)     { return uuid.UUID(id).Value() }
-func (id JobRunID) Value() (driver.Value, error)  { return uuid.UUID(id).Value() }
+func (id UserID) Value() (driver.Value, error)   { return uuid.UUID(id).Value() }
+func (id JobID) Value() (driver.Value, error)    { return uuid.UUID(id).Value() }
+func (id JobRunID) Value() (driver.Value, error) { return uuid.UUID(id).Value() }
 func (id RunEventID) Value() (driver.Value, error) {
 	return uuid.UUID(id).Value()
 }
@@ -140,24 +110,6 @@ func (id *UserID) Scan(src any) error {
 		return fmt.Errorf("scan UserID: %w", err)
 	}
 	*id = UserID(u)
-	return nil
-}
-
-func (id *OrderID) Scan(src any) error {
-	var u uuid.UUID
-	if err := u.Scan(src); err != nil {
-		return fmt.Errorf("scan OrderID: %w", err)
-	}
-	*id = OrderID(u)
-	return nil
-}
-
-func (id *PaymentID) Scan(src any) error {
-	var u uuid.UUID
-	if err := u.Scan(src); err != nil {
-		return fmt.Errorf("scan PaymentID: %w", err)
-	}
-	*id = PaymentID(u)
 	return nil
 }
 
@@ -198,22 +150,6 @@ func ParseUserID(s string) (UserID, error) {
 		return UserID{}, ErrInvalidID
 	}
 	return UserID(u), nil
-}
-
-func ParseOrderID(s string) (OrderID, error) {
-	u, err := uuid.Parse(s)
-	if err != nil {
-		return OrderID{}, ErrInvalidID
-	}
-	return OrderID(u), nil
-}
-
-func ParsePaymentID(s string) (PaymentID, error) {
-	u, err := uuid.Parse(s)
-	if err != nil {
-		return PaymentID{}, ErrInvalidID
-	}
-	return PaymentID(u), nil
 }
 
 func ParseJobID(s string) (JobID, error) {

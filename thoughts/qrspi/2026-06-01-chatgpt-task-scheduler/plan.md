@@ -510,11 +510,11 @@ unavailable, hand-write a `MockRepo` implementing `Repo` for the service test.
 - [x] `make test` passes — add `internal/task/service_test.go` (gomock): create→pending, cancel→cancelled, cancel-terminal→`ErrInvalidStatusTransition`, status-not-found→`ErrJobRunNotFound`.
 
 #### Manual
-- [ ] `migrate-up` against local Postgres creates `jobs`/`job_runs`/`run_events` (check `\d job_runs`, `idx_job_runs_due` exists).
-- [ ] `npx @modelcontextprotocol/inspector go run ./cmd/mcp` → **Connect** shows 4 tools: `task.create`, `task.list`, `task.status`, `task.cancel`.
-- [ ] `task.create` with `description="Summarize tech news"`, `scheduled_at="2025-01-01T00:00:00Z"` → response includes `{"job_id": "...", "status": "pending"}`.
-- [ ] `task.status` with that `job_id` → still `"pending"` (no watcher yet).
-- [ ] `task.create` future `scheduled_at="2099-12-31T00:00:00Z"` → `task.cancel` that `job_id` → `"cancelled"`. `task.list` shows both runs.
+- [x] `migrate-up` against local Postgres creates `jobs`/`job_runs`/`run_events` (check `\d job_runs`, `idx_job_runs_due` exists).
+- [x] `npx @modelcontextprotocol/inspector go run ./cmd/mcp` → **Connect** shows 4 tools: `task.create`, `task.list`, `task.status`, `task.cancel`.
+- [x] `task.create` with `description="Summarize tech news"`, `scheduled_at="2025-01-01T00:00:00Z"` → response includes `{"job_id": "...", "status": "pending"}`.
+- [x] `task.status` with that `job_id` → still `"pending"` (no watcher yet).
+- [x] `task.create` future `scheduled_at="2099-12-31T00:00:00Z"` → `task.cancel` that `job_id` → `"cancelled"`. `task.list` shows both runs.
 
 ---
 
@@ -698,9 +698,9 @@ func wireFeatures(engine *gin.Engine, pool *pgxpool.Pool, rdb *redis.Client, aut
 
 ### Verification
 #### Automated
-- [ ] `make test` passes — `internal/task/watcher_test.go` (gomock Repo+Queue): due pending run → `Enqueue` called once + `UpdateRunStatus` to `queued`; `FindDueRuns` error → no enqueue, no crash; ctx cancel → `Run` returns nil.
-- [ ] `make lint` passes — `queue_redis.go` is the only task file importing `go-redis`; `watcher.go`/`service.go` driver-free.
-- [ ] `go build ./...`.
+- [x] `make test` passes — `internal/task/watcher_test.go` (gomock Repo+Queue): due pending run → `Enqueue` called once + `UpdateRunStatus` to `queued`; `FindDueRuns` error → no enqueue, no crash; ctx cancel → `Run` returns nil.
+- [x] `make lint` passes — `queue_redis.go` is the only task file importing `go-redis`; `watcher.go`/`service.go` driver-free.
+- [x] `go build ./...`.
 
 #### Manual
 - [ ] Local Postgres + Redis up. `make run`. Via inspector (`go run ./cmd/mcp`) `task.create` with past `scheduled_at` → within one watcher tick (~5s) `task.status` shows `"queued"`.

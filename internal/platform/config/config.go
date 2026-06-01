@@ -61,6 +61,16 @@ type LoggerConfig struct {
 // Load reads config from env (with .env fallback). Env vars are upper-cased
 // and underscored, e.g. APP_ENV, POSTGRES_DSN.
 func Load() (*Config, error) {
+	return load(true)
+}
+
+// LoadMCP loads config for the stdio MCP server. MCP only needs database
+// access, so it should not require HTTP auth settings like JWT_SECRET.
+func LoadMCP() (*Config, error) {
+	return load(false)
+}
+
+func load(requireJWT bool) (*Config, error) {
 	v := viper.New()
 
 	// Defaults
@@ -121,17 +131,17 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	if err := cfg.validate(); err != nil {
+	if err := cfg.validate(requireJWT); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
 }
 
-func (c *Config) validate() error {
+func (c *Config) validate(requireJWT bool) error {
 	if c.DB.DSN == "" {
 		return fmt.Errorf("POSTGRES_DSN is required")
 	}
-	if c.JWT.Secret == "" {
+	if requireJWT && c.JWT.Secret == "" {
 		return fmt.Errorf("JWT_SECRET is required")
 	}
 	return nil

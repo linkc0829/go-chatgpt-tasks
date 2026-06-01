@@ -29,27 +29,6 @@ type JobRun struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
-type Order struct {
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	Amount    int64
-	Currency  string
-	Status    string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-}
-
-type Payment struct {
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	OrderID   pgtype.UUID
-	Amount    int64
-	Currency  string
-	Status    string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-}
-
 type RunEvent struct {
 	ID        pgtype.UUID
 	JobRunID  pgtype.UUID

@@ -183,3 +183,40 @@ func (mr *MockRepoMockRecorder) UpdateRunStatus(ctx, r interface{}) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunStatus", reflect.TypeOf((*MockRepo)(nil).UpdateRunStatus), ctx, r)
 }
+
+// MockQueue is a mock of Queue interface.
+type MockQueue struct {
+	ctrl     *gomock.Controller
+	recorder *MockQueueMockRecorder
+}
+
+// MockQueueMockRecorder is the mock recorder for MockQueue.
+type MockQueueMockRecorder struct {
+	mock *MockQueue
+}
+
+// NewMockQueue creates a new mock instance.
+func NewMockQueue(ctrl *gomock.Controller) *MockQueue {
+	mock := &MockQueue{ctrl: ctrl}
+	mock.recorder = &MockQueueMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockQueue) EXPECT() *MockQueueMockRecorder {
+	return m.recorder
+}
+
+// Enqueue mocks base method.
+func (m_2 *MockQueue) Enqueue(ctx context.Context, m task.JobRunMsg) error {
+	m_2.ctrl.T.Helper()
+	ret := m_2.ctrl.Call(m_2, "Enqueue", ctx, m)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Enqueue indicates an expected call of Enqueue.
+func (mr *MockQueueMockRecorder) Enqueue(ctx, m interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enqueue", reflect.TypeOf((*MockQueue)(nil).Enqueue), ctx, m)
+}

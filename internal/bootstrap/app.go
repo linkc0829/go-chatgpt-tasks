@@ -10,7 +10,9 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -24,19 +26,23 @@ import (
 	"github.com/linkc0829/go-backend-template/internal/platform/otel"
 	pgplatform "github.com/linkc0829/go-backend-template/internal/platform/postgres"
 	rdsplatform "github.com/linkc0829/go-backend-template/internal/platform/redis"
+	"github.com/linkc0829/go-backend-template/internal/task"
 )
 
 // App holds every wired-up resource the api binary needs. main.go calls Run()
 // and Shutdown().
 type App struct {
-	cfg            *config.Config
-	logger         *zap.Logger
-	pool           *pgxpool.Pool
-	rdb            *redis.Client
-	authMgr        *auth.Manager
-	metricsReg     *metrics.Registry
-	server         *httpserver.Server
-	otelShutdown   otel.ShutdownFunc
+	cfg          *config.Config
+	logger       *zap.Logger
+	pool         *pgxpool.Pool
+	rdb          *redis.Client
+	authMgr      *auth.Manager
+	metricsReg   *metrics.Registry
+	server       *httpserver.Server
+	otelShutdown otel.ShutdownFunc
+	runners      []task.Runner
+	bgCancel     context.CancelFunc
+	bgWG         sync.WaitGroup
 }
 
 // NewApp wires the entire application graph. Order of construction matters
@@ -98,7 +104,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*App, error) {
 
 	// ----- Wire feature slices -----------------------------------------
 	// All cross-feature port wiring happens in wire.go.
-	wireFeatures(engine, pool, rdb, authMgr, lg)
+	runners := wireFeatures(engine, pool, rdb, authMgr, lg)
 
 	// ----- HTTP server wrapper ------------------------------------------
 	srv := httpserver.Wrap(engine, httpserver.Config{Port: cfg.HTTP.Port}, lg)
@@ -112,11 +118,28 @@ func NewApp(ctx context.Context, cfg *config.Config) (*App, error) {
 		metricsReg:   metricsReg,
 		server:       srv,
 		otelShutdown: otelShutdown,
+		runners:      runners,
 	}, nil
 }
 
 // Logger exposes the logger so main can log fatals.
 func (a *App) Logger() *zap.Logger { return a.logger }
 
-// Run starts the HTTP server. Blocks until Shutdown is called or it errors.
-func (a *App) Run() error { return a.server.Start() }
+// Run starts background runners and the HTTP server. Blocks until Shutdown is
+// called or the HTTP server errors.
+func (a *App) Run() error {
+	bgCtx, cancel := context.WithCancel(context.Background())
+	a.bgCancel = cancel
+
+	for _, runner := range a.runners {
+		a.bgWG.Add(1)
+		go func(r task.Runner) {
+			defer a.bgWG.Done()
+			if err := r.Run(bgCtx); err != nil && !errors.Is(err, context.Canceled) {
+				a.logger.Error("background runner stopped", zap.Error(err))
+			}
+		}(runner)
+	}
+
+	return a.server.Start()
+}
