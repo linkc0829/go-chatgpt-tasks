@@ -62,6 +62,18 @@ func (q *watcherQueue) Enqueue(_ context.Context, msg JobRunMsg) error {
 	return nil
 }
 
+func (q *watcherQueue) EnsureGroup(context.Context) error { return nil }
+func (q *watcherQueue) Read(context.Context, string, int64, time.Duration) ([]QueuedMessage, error) {
+	return nil, nil
+}
+func (q *watcherQueue) Reclaim(context.Context, string, time.Duration, int64) ([]QueuedMessage, error) {
+	return nil, nil
+}
+func (q *watcherQueue) Ack(context.Context, string) error { return nil }
+func (q *watcherQueue) DeadLetter(context.Context, JobRunMsg) error {
+	return nil
+}
+
 func TestWatcher_scanOnceQueuesDuePendingRun(t *testing.T) {
 	run := newWatcherRun(t)
 	repo := &watcherRepo{findDueRuns: []*JobRun{run}}

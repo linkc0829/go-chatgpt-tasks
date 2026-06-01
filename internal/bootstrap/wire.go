@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -39,6 +40,12 @@ func wireFeatures(
 	taskRepo := task.NewPostgresRepo(pool)
 	taskQueue := task.NewRedisQueue(rdb)
 	watcher := task.NewWatcher(taskRepo, taskQueue, 5*time.Second, lg)
+	exec := task.NewStubExecutor(lg)
 
-	return []task.Runner{watcher}
+	const workerCount = 3
+	runners := []task.Runner{watcher}
+	for i := 0; i < workerCount; i++ {
+		runners = append(runners, task.NewWorker(fmt.Sprintf("worker-%d", i), taskRepo, taskQueue, exec, lg))
+	}
+	return runners
 }

@@ -161,7 +161,7 @@ func (r *JobRun) MarkQueued() error {
 }
 
 func (r *JobRun) MarkRunning() error {
-	if r.status != StatusQueued {
+	if r.status != StatusQueued && r.status != StatusRetry {
 		return ErrInvalidStatusTransition
 	}
 	r.status = StatusRunning

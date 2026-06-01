@@ -207,6 +207,34 @@ func (m *MockQueue) EXPECT() *MockQueueMockRecorder {
 	return m.recorder
 }
 
+// Ack mocks base method.
+func (m *MockQueue) Ack(ctx context.Context, streamID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Ack", ctx, streamID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Ack indicates an expected call of Ack.
+func (mr *MockQueueMockRecorder) Ack(ctx, streamID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ack", reflect.TypeOf((*MockQueue)(nil).Ack), ctx, streamID)
+}
+
+// DeadLetter mocks base method.
+func (m_2 *MockQueue) DeadLetter(ctx context.Context, m task.JobRunMsg) error {
+	m_2.ctrl.T.Helper()
+	ret := m_2.ctrl.Call(m_2, "DeadLetter", ctx, m)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeadLetter indicates an expected call of DeadLetter.
+func (mr *MockQueueMockRecorder) DeadLetter(ctx, m interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeadLetter", reflect.TypeOf((*MockQueue)(nil).DeadLetter), ctx, m)
+}
+
 // Enqueue mocks base method.
 func (m_2 *MockQueue) Enqueue(ctx context.Context, m task.JobRunMsg) error {
 	m_2.ctrl.T.Helper()
@@ -219,4 +247,85 @@ func (m_2 *MockQueue) Enqueue(ctx context.Context, m task.JobRunMsg) error {
 func (mr *MockQueueMockRecorder) Enqueue(ctx, m interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enqueue", reflect.TypeOf((*MockQueue)(nil).Enqueue), ctx, m)
+}
+
+// EnsureGroup mocks base method.
+func (m *MockQueue) EnsureGroup(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureGroup", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureGroup indicates an expected call of EnsureGroup.
+func (mr *MockQueueMockRecorder) EnsureGroup(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureGroup", reflect.TypeOf((*MockQueue)(nil).EnsureGroup), ctx)
+}
+
+// Read mocks base method.
+func (m *MockQueue) Read(ctx context.Context, consumer string, count int64, block time.Duration) ([]task.QueuedMessage, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Read", ctx, consumer, count, block)
+	ret0, _ := ret[0].([]task.QueuedMessage)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Read indicates an expected call of Read.
+func (mr *MockQueueMockRecorder) Read(ctx, consumer, count, block interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockQueue)(nil).Read), ctx, consumer, count, block)
+}
+
+// Reclaim mocks base method.
+func (m *MockQueue) Reclaim(ctx context.Context, consumer string, minIdle time.Duration, count int64) ([]task.QueuedMessage, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Reclaim", ctx, consumer, minIdle, count)
+	ret0, _ := ret[0].([]task.QueuedMessage)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Reclaim indicates an expected call of Reclaim.
+func (mr *MockQueueMockRecorder) Reclaim(ctx, consumer, minIdle, count interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reclaim", reflect.TypeOf((*MockQueue)(nil).Reclaim), ctx, consumer, minIdle, count)
+}
+
+// MockExecutor is a mock of Executor interface.
+type MockExecutor struct {
+	ctrl     *gomock.Controller
+	recorder *MockExecutorMockRecorder
+}
+
+// MockExecutorMockRecorder is the mock recorder for MockExecutor.
+type MockExecutorMockRecorder struct {
+	mock *MockExecutor
+}
+
+// NewMockExecutor creates a new mock instance.
+func NewMockExecutor(ctrl *gomock.Controller) *MockExecutor {
+	mock := &MockExecutor{ctrl: ctrl}
+	mock.recorder = &MockExecutorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockExecutor) EXPECT() *MockExecutorMockRecorder {
+	return m.recorder
+}
+
+// Execute mocks base method.
+func (m *MockExecutor) Execute(ctx context.Context, r *task.JobRun) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Execute", ctx, r)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Execute indicates an expected call of Execute.
+func (mr *MockExecutorMockRecorder) Execute(ctx, r interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockExecutor)(nil).Execute), ctx, r)
 }

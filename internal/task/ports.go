@@ -23,4 +23,18 @@ type Repo interface {
 
 type Queue interface {
 	Enqueue(ctx context.Context, m JobRunMsg) error
+	EnsureGroup(ctx context.Context) error
+	Read(ctx context.Context, consumer string, count int64, block time.Duration) ([]QueuedMessage, error)
+	Reclaim(ctx context.Context, consumer string, minIdle time.Duration, count int64) ([]QueuedMessage, error)
+	Ack(ctx context.Context, streamID string) error
+	DeadLetter(ctx context.Context, m JobRunMsg) error
+}
+
+type QueuedMessage struct {
+	StreamID string
+	Msg      JobRunMsg
+}
+
+type Executor interface {
+	Execute(ctx context.Context, r *JobRun) error
 }

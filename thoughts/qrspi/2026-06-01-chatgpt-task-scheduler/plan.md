@@ -703,9 +703,9 @@ func wireFeatures(engine *gin.Engine, pool *pgxpool.Pool, rdb *redis.Client, aut
 - [x] `go build ./...`.
 
 #### Manual
-- [ ] Local Postgres + Redis up. `make run`. Via inspector (`go run ./cmd/mcp`) `task.create` with past `scheduled_at` → within one watcher tick (~5s) `task.status` shows `"queued"`.
-- [ ] `redis-cli XLEN task:runs` ≥ 1 (message published).
-- [ ] `Ctrl+C` on `cmd/api` → process exits cleanly within shutdown timeout (no goroutine-leak hang; watcher stops on ctx cancel).
+- [x] Local Postgres + Redis up. `make run`. Via inspector (`go run ./cmd/mcp`) `task.create` with past `scheduled_at` → within one watcher tick (~5s) `task.status` shows `"queued"`.
+- [x] `redis-cli XLEN task:runs` ≥ 1 (message published).
+- [x] `Ctrl+C` on `cmd/api` → process exits cleanly within shutdown timeout (no goroutine-leak hang; watcher stops on ctx cancel).
 
 ---
 
@@ -836,11 +836,11 @@ return runners
 
 ### Verification
 #### Automated
-- [ ] `make test` passes — `internal/task/worker_test.go` (gomock Queue+Repo, stub Executor):
+- [x] `make test` passes — `internal/task/worker_test.go` (gomock Queue+Repo, stub Executor):
   (a) success → `MarkSuccess` + `Ack` + `AppendEvent(success)`; (b) transient fail (attempts<max) →
   `MarkRetry` + re-`Enqueue` + `Ack`; (c) fail at max attempts → `MarkFailed` + `DeadLetter` + `Ack`;
   (d) already-terminal run → `Ack` only, no execute (idempotency).
-- [ ] `make lint`, `go build ./...`.
+- [x] `make lint`, `go build ./...`.
 
 #### Manual
 - [ ] `make run` (Postgres+Redis). Inspector: `task.create` past `scheduled_at` → `task.status`
