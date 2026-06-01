@@ -50,6 +50,8 @@ func (r *watcherRepo) FindTerminalRecurringRuns(context.Context, time.Time, int3
 }
 
 type watcherQueue struct {
+	t        *testing.T
+	runs     map[string]*JobRun
 	enqueued []JobRunMsg
 	err      error
 }
@@ -57,6 +59,16 @@ type watcherQueue struct {
 func (q *watcherQueue) Enqueue(_ context.Context, msg JobRunMsg) error {
 	if q.err != nil {
 		return q.err
+	}
+	if q.t != nil {
+		q.t.Helper()
+		run := q.runs[msg.JobRunID]
+		if run == nil {
+			q.t.Fatalf("Watcher.scanOnce() enqueued unknown job_run_id %q", msg.JobRunID)
+		}
+		if got, want := run.Status(), StatusQueued; got != want {
+			q.t.Fatalf("Watcher.scanOnce() enqueued status = %q, want %q", got, want)
+		}
 	}
 	q.enqueued = append(q.enqueued, msg)
 	return nil
@@ -77,7 +89,10 @@ func (q *watcherQueue) DeadLetter(context.Context, JobRunMsg) error {
 func TestWatcher_scanOnceQueuesDuePendingRun(t *testing.T) {
 	run := newWatcherRun(t)
 	repo := &watcherRepo{findDueRuns: []*JobRun{run}}
-	queue := &watcherQueue{}
+	queue := &watcherQueue{
+		t:    t,
+		runs: map[string]*JobRun{run.ID().String(): run},
+	}
 	watcher := NewWatcher(repo, queue, time.Hour, zap.NewNop())
 
 	watcher.scanOnce(context.Background())

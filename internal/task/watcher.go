@@ -59,19 +59,19 @@ func (w *Watcher) scanOnce(ctx context.Context) {
 		}
 
 		for _, run := range runs {
-			if err := w.queue.Enqueue(cctx, JobRunMsg{
-				JobRunID: run.ID().String(),
-				Attempts: run.Attempts(),
-			}); err != nil {
-				w.log.Error("watcher enqueue", zap.Error(err))
-				continue
-			}
-
 			if err := run.MarkQueued(); err != nil {
 				continue
 			}
 			if err := w.repo.UpdateRunStatus(cctx, run); err != nil {
 				w.log.Error("watcher mark queued", zap.Error(err))
+				continue
+			}
+
+			if err := w.queue.Enqueue(cctx, JobRunMsg{
+				JobRunID: run.ID().String(),
+				Attempts: run.Attempts(),
+			}); err != nil {
+				w.log.Error("watcher enqueue", zap.Error(err))
 			}
 		}
 	}
