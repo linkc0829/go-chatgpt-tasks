@@ -914,10 +914,10 @@ runners = append(runners, task.NewRecurringWatcher(taskRepo, 10*time.Second, lg)
 
 ### Verification
 #### Automated
-- [ ] `make test` passes — `internal/task/recurring_watcher_test.go` (gomock Repo): terminal recurring
+- [x] `make test` passes — `internal/task/recurring_watcher_test.go` (gomock Repo): terminal recurring
   spec → `InsertRunIfAbsent` called with `sequence+1` and `scheduledAt+interval`; `InsertRunIfAbsent`
   returning `created=false` (conflict) is a silent no-op; ctx cancel → `Run` returns nil.
-- [ ] `make lint`, `go build ./...`.
+- [x] `make lint`, `go build ./...`.
 
 #### Manual
 - [ ] Inspector: `task.create` with `recurring_interval_seconds=5` and a past `scheduled_at` → the

@@ -47,5 +47,6 @@ func wireFeatures(
 	for i := 0; i < workerCount; i++ {
 		runners = append(runners, task.NewWorker(fmt.Sprintf("worker-%d", i), taskRepo, taskQueue, exec, lg))
 	}
+	runners = append(runners, task.NewRecurringWatcher(taskRepo, 10*time.Second, lg))
 	return runners
 }
