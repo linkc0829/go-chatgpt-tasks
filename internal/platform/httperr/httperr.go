@@ -19,9 +19,9 @@
 // Typical usage from a handler:
 //
 //	switch {
-//	case errors.Is(err, ErrOrderNotFound):
-//	    httperr.NotFound(c, "order not found")
-//	case errors.Is(err, ErrInvalidAmount):
+//	case errors.Is(err, ErrUserNotFound):
+//	    httperr.NotFound(c, "user not found")
+//	case errors.Is(err, ErrInvalidEmail):
 //	    httperr.BadRequest(c, err.Error())
 //	default:
 //	    httperr.Internal(c, "internal error")
@@ -51,10 +51,9 @@ func JSONWithCode(c *gin.Context, status int, code, msg string) {
 	c.AbortWithStatusJSON(status, Response{Error: msg, Code: code})
 }
 
-func BadRequest(c *gin.Context, msg string)     { JSON(c, http.StatusBadRequest, msg) }
-func Unauthorized(c *gin.Context, msg string)   { JSON(c, http.StatusUnauthorized, msg) }
-func Forbidden(c *gin.Context, msg string)      { JSON(c, http.StatusForbidden, msg) }
-func NotFound(c *gin.Context, msg string)       { JSON(c, http.StatusNotFound, msg) }
-func Conflict(c *gin.Context, msg string)       { JSON(c, http.StatusConflict, msg) }
-func PaymentRequired(c *gin.Context, msg string){ JSON(c, http.StatusPaymentRequired, msg) }
-func Internal(c *gin.Context, msg string)       { JSON(c, http.StatusInternalServerError, msg) }
+func BadRequest(c *gin.Context, msg string)   { JSON(c, http.StatusBadRequest, msg) }
+func Unauthorized(c *gin.Context, msg string) { JSON(c, http.StatusUnauthorized, msg) }
+func Forbidden(c *gin.Context, msg string)    { JSON(c, http.StatusForbidden, msg) }
+func NotFound(c *gin.Context, msg string)     { JSON(c, http.StatusNotFound, msg) }
+func Conflict(c *gin.Context, msg string)     { JSON(c, http.StatusConflict, msg) }
+func Internal(c *gin.Context, msg string)     { JSON(c, http.StatusInternalServerError, msg) }

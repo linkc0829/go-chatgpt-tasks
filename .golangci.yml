@@ -42,7 +42,7 @@ linters-settings:
             desc: "Domain must not depend on web frameworks"
           - pkg: "github.com/golang-jwt/jwt"
             desc: "Domain must not depend on auth libraries"
-          - pkg: "github.com/linkc0829/go-backend-template/internal/platform"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/platform"
             desc: "Domain must not depend on platform code"
 
       # ------------------------------------------------------------------
@@ -79,31 +79,18 @@ linters-settings:
       # glob-based rule was tried and rejected because it mis-blocks
       # internal/<feature>/mocks subpackages from being imported by tests.
       # ------------------------------------------------------------------
-      no-cross-feature-order:
-        files:
-          - "**/internal/order/**"
-        deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/payment"
-            desc: "Cross-feature import forbidden. Define a port in order/ports.go and inject in bootstrap."
-          - pkg: "github.com/linkc0829/go-backend-template/internal/user"
-            desc: "Cross-feature import forbidden. Define a port in order/ports.go and inject in bootstrap."
-
-      no-cross-feature-payment:
-        files:
-          - "**/internal/payment/**"
-        deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/order"
-            desc: "Cross-feature import forbidden."
-          - pkg: "github.com/linkc0829/go-backend-template/internal/user"
-            desc: "Cross-feature import forbidden."
-
       no-cross-feature-user:
         files:
           - "**/internal/user/**"
         deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/order"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/task"
             desc: "Cross-feature import forbidden."
-          - pkg: "github.com/linkc0829/go-backend-template/internal/payment"
+
+      no-cross-feature-task:
+        files:
+          - "**/internal/task/**"
+        deny:
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/user"
             desc: "Cross-feature import forbidden."
 
       # ------------------------------------------------------------------
@@ -113,7 +100,7 @@ linters-settings:
         files:
           - "**/internal/shared/**"
         deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/platform"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/platform"
             desc: "Shared kernel must not depend on platform"
           - pkg: "github.com/jackc/pgx"
           - pkg: "github.com/redis/go-redis"

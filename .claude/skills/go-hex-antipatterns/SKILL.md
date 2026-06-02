@@ -43,7 +43,7 @@ func NewService(repo OrderRepo, cache OrderCache) *Service
 
 ```go
 // BAD — order package imports payment package
-import "github.com/linkc0829/go-backend-template/internal/payment"
+import "github.com/linkc0829/go-chatgpt-tasks/internal/payment"
 
 // GOOD — order defines a capability port; bootstrap wires payment.Service into it
 // internal/order/ports.go

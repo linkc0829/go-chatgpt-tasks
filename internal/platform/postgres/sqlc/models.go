@@ -8,25 +8,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type Order struct {
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	Amount    int64
-	Currency  string
-	Status    string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+type Job struct {
+	ID              pgtype.UUID
+	Kind            string
+	Description     string
+	IntervalSeconds int64
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
-type Payment struct {
+type JobRun struct {
+	ID          pgtype.UUID
+	JobID       pgtype.UUID
+	Sequence    int32
+	Status      string
+	ScheduledAt pgtype.Timestamptz
+	TimeBucket  int64
+	Attempts    int32
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type RunEvent struct {
 	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	OrderID   pgtype.UUID
-	Amount    int64
-	Currency  string
+	JobRunID  pgtype.UUID
 	Status    string
 	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
 }
 
 type User struct {

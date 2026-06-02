@@ -11,21 +11,20 @@ import (
 )
 
 type Querier interface {
-	CountOrdersByUser(ctx context.Context, userID pgtype.UUID) (int64, error)
-	GetLatestPaymentByOrder(ctx context.Context, orderID pgtype.UUID) (Payment, error)
-	GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, error)
-	GetPaymentByID(ctx context.Context, id pgtype.UUID) (Payment, error)
+	CountJobRuns(ctx context.Context) (int64, error)
+	FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]JobRun, error)
+	GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error)
+	GetJobRunByID(ctx context.Context, id pgtype.UUID) (JobRun, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
-	// Convention: use sqlc.arg(<name>) for every parameter, not positional $N.
-	// Keep arg names matching column names so generated Go field names stay
-	// predictable (e.g. sqlc.arg(user_id) → UserID).
-	InsertOrder(ctx context.Context, arg InsertOrderParams) error
-	InsertPayment(ctx context.Context, arg InsertPaymentParams) error
+	InsertJob(ctx context.Context, arg InsertJobParams) error
+	InsertJobRun(ctx context.Context, arg InsertJobRunParams) error
+	InsertJobRunIfAbsent(ctx context.Context, arg InsertJobRunIfAbsentParams) (int64, error)
+	InsertRunEvent(ctx context.Context, arg InsertRunEventParams) error
 	InsertUser(ctx context.Context, arg InsertUserParams) error
-	ListOrdersByUser(ctx context.Context, arg ListOrdersByUserParams) ([]Order, error)
-	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (int64, error)
-	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (int64, error)
+	ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]JobRun, error)
+	ListTerminalRecurringRuns(ctx context.Context, arg ListTerminalRecurringRunsParams) ([]ListTerminalRecurringRunsRow, error)
+	UpdateJobRunStatus(ctx context.Context, arg UpdateJobRunStatusParams) (int64, error)
 	UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) error
 }
 

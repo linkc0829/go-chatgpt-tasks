@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(~/go/bin/sqlc generate *)"
+      "Bash(~/go/bin/sqlc generate *)",
+      "Bash(git add *)"
     ]
   }
 }

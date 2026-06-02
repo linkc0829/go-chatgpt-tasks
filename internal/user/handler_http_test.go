@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/linkc0829/go-backend-template/internal/shared"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 )
 
 // ----------------------------------------------------------------------------
@@ -67,7 +67,7 @@ func TestHandler_Register_Created(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
-	var resp AuthResponse
+	var resp authResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "tok", resp.Token)
 	assert.Equal(t, "alice@example.com", resp.User.Email)

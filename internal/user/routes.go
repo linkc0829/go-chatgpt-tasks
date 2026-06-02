@@ -3,7 +3,7 @@ package user
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/linkc0829/go-backend-template/internal/platform/auth"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/auth"
 )
 
 // RegisterRoutes wires user endpoints into the given router group.

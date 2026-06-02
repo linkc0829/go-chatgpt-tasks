@@ -3,7 +3,7 @@ package user
 import (
 	"context"
 
-	"github.com/linkc0829/go-backend-template/internal/shared"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 )
 
 // Repo is the outbound port for user persistence.

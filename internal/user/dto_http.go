@@ -1,6 +1,6 @@
 package user
 
-import "github.com/linkc0829/go-backend-template/internal/shared"
+import "github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 
 // ----------------------------------------------------------------------------
 // Requests
@@ -18,15 +18,11 @@ type LoginRequest struct {
 }
 
 func (r RegisterRequest) toInput() RegisterInput {
-	return RegisterInput{
-		Email:       r.Email,
-		Password:    r.Password,
-		DisplayName: r.DisplayName,
-	}
+	return RegisterInput(r)
 }
 
 func (r LoginRequest) toInput() LoginInput {
-	return LoginInput{Email: r.Email, Password: r.Password}
+	return LoginInput(r)
 }
 
 // ----------------------------------------------------------------------------
@@ -36,20 +32,20 @@ func (r LoginRequest) toInput() LoginInput {
 // Always map through these DTOs.
 // ----------------------------------------------------------------------------
 
-type UserResponse struct {
+type response struct {
 	ID          shared.UserID `json:"id"`
 	Email       string        `json:"email"`
 	DisplayName string        `json:"display_name"`
 	CreatedAt   string        `json:"created_at"`
 }
 
-type AuthResponse struct {
-	User  UserResponse `json:"user"`
-	Token string       `json:"token"`
+type authResponse struct {
+	User  response `json:"user"`
+	Token string   `json:"token"`
 }
 
-func toUserResponse(u *User) UserResponse {
-	return UserResponse{
+func toUserResponse(u *User) response {
+	return response{
 		ID:          u.ID(),
 		Email:       u.Email(),
 		DisplayName: u.DisplayName(),
@@ -57,6 +53,6 @@ func toUserResponse(u *User) UserResponse {
 	}
 }
 
-func toAuthResponse(u *User, token string) AuthResponse {
-	return AuthResponse{User: toUserResponse(u), Token: token}
+func toAuthResponse(u *User, token string) authResponse {
+	return authResponse{User: toUserResponse(u), Token: token}
 }

@@ -61,22 +61,33 @@ type LoggerConfig struct {
 // Load reads config from env (with .env fallback). Env vars are upper-cased
 // and underscored, e.g. APP_ENV, POSTGRES_DSN.
 func Load() (*Config, error) {
+	return load(true)
+}
+
+// LoadMCP loads config for the stdio MCP server. MCP only needs database
+// access, so it should not require HTTP auth settings like JWT_SECRET.
+func LoadMCP() (*Config, error) {
+	return load(false)
+}
+
+func load(requireJWT bool) (*Config, error) {
 	v := viper.New()
 
 	// Defaults
 	v.SetDefault("app.env", "development")
-	v.SetDefault("app.name", "go-backend-template")
+	v.SetDefault("app.name", "go-chatgpt-tasks")
 	v.SetDefault("app.shutdown_timeout", "10s")
 	v.SetDefault("http.port", 8080)
 	v.SetDefault("db.max_conns", 20)
 	v.SetDefault("db.min_conns", 2)
 	v.SetDefault("redis.addr", "localhost:6379")
 	v.SetDefault("redis.db", 0)
-	v.SetDefault("jwt.issuer", "go-backend-template")
+	v.SetDefault("jwt.issuer", "go-chatgpt-tasks")
+	v.SetDefault("jwt.secret", "local-dev-secret")
 	v.SetDefault("jwt.ttl", "24h")
 	v.SetDefault("otel.enabled", false)
 	v.SetDefault("otel.endpoint", "localhost:4317")
-	v.SetDefault("otel.service_name", "go-backend-template")
+	v.SetDefault("otel.service_name", "go-chatgpt-tasks")
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("logger.encoding", "json")
 
@@ -121,17 +132,17 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	if err := cfg.validate(); err != nil {
+	if err := cfg.validate(requireJWT); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
 }
 
-func (c *Config) validate() error {
+func (c *Config) validate(requireJWT bool) error {
 	if c.DB.DSN == "" {
 		return fmt.Errorf("POSTGRES_DSN is required")
 	}
-	if c.JWT.Secret == "" {
+	if requireJWT && c.JWT.Secret == "" {
 		return fmt.Errorf("JWT_SECRET is required")
 	}
 	return nil
