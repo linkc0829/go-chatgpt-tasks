@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(~/go/bin/sqlc generate *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(where.exe docker *)",
+      "Bash(docker --version)"
     ]
   }
 }

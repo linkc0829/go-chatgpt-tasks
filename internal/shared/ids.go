@@ -29,11 +29,15 @@ type JobID uuid.UUID
 type JobRunID uuid.UUID
 type RunEventID uuid.UUID
 
-func NewUserID() UserID     { return UserID(uuid.New()) }
-func NewJobID() JobID       { return JobID(uuid.New()) }
-func NewJobRunID() JobRunID { return JobRunID(uuid.New()) }
+func NewUserID() UserID     { return UserID(newUUIDV7()) }
+func NewJobID() JobID       { return JobID(newUUIDV7()) }
+func NewJobRunID() JobRunID { return JobRunID(newUUIDV7()) }
 func NewRunEventID() RunEventID {
-	return RunEventID(uuid.New())
+	return RunEventID(newUUIDV7())
+}
+
+func newUUIDV7() uuid.UUID {
+	return uuid.Must(uuid.NewV7())
 }
 
 func (id UserID) String() string   { return uuid.UUID(id).String() }

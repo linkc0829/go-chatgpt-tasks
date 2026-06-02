@@ -145,6 +145,26 @@ A `task.create` with a past `scheduled_at` reaches a terminal status within
 
 ## Quick start
 
+### Docker Compose (one-command demo)
+
+Brings up Postgres + Redis, applies migrations, then starts the API with its
+background runners. No local Go, Postgres, Redis, or migrate CLI needed.
+
+```bash
+docker compose up --build
+# API:     http://localhost:8080  (health: /healthz, metrics: /metrics)
+# Postgres: localhost:5432  Redis: localhost:6379
+# Tear down (and wipe the db volume):
+docker compose down -v
+```
+
+The `migrate` service runs once and exits after applying migrations; the `api`
+service waits for it to finish and for Postgres/Redis to report healthy before
+starting. The MCP server is not part of the compose stack — run it locally
+against the same datastores with `go run ./cmd/mcp`.
+
+### Local (without Docker)
+
 ```bash
 # 1. Start local Postgres (port 5432) and Redis (port 6379).
 #    Defaults expect database=chatgpt-tasks. See .env.example to override DSNs.

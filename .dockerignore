@@ -1,0 +1,16 @@
+# Build artifacts
+bin/
+coverage.out
+coverage.html
+
+# Local env / secrets
+.env
+
+# VCS & tooling
+.git/
+.githooks/
+.claude/
+
+# Docs / non-build assets
+*.md
+docs/

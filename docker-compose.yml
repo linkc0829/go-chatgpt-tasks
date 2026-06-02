@@ -1,0 +1,74 @@
+# Demo stack for go-chatgpt-tasks.
+#
+#   docker compose up --build
+#
+# Brings up Postgres + Redis, applies migrations, then starts the API
+# (which also runs the background watcher + workers). API listens on :8080.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chatgpt-tasks
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chatgpt-tasks"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate:v4.18.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://postgres:postgres@postgres:5432/chatgpt-tasks?sslmode=disable"
+      - "up"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: development
+      APP_PORT: "8080"
+      POSTGRES_DSN: postgres://postgres:postgres@postgres:5432/chatgpt-tasks?sslmode=disable
+      REDIS_ADDR: redis:6379
+      JWT_SECRET: local-demo-secret-change-me
+      LOG_LEVEL: info
+      LOG_ENCODING: console
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
