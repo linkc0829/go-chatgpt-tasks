@@ -1,4 +1,4 @@
-# go-backend-template
+# go-chatgpt-tasks
 
 Hexagonal Architecture Go backend template, designed for **AI vibe-coding** and
 **system-design demos**. Optimized for solo developers building portfolio

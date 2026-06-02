@@ -11,10 +11,10 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/linkc0829/go-backend-template/internal/platform/config"
-	"github.com/linkc0829/go-backend-template/internal/platform/postgres"
-	"github.com/linkc0829/go-backend-template/internal/task"
-	taskmcp "github.com/linkc0829/go-backend-template/internal/task/mcp"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/config"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/task"
+	taskmcp "github.com/linkc0829/go-chatgpt-tasks/internal/task/mcp"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-module github.com/linkc0829/go-backend-template
+module github.com/linkc0829/go-chatgpt-tasks
 
 go 1.25.0
 

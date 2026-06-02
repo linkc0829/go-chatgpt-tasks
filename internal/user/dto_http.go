@@ -1,6 +1,6 @@
 package user
 
-import "github.com/linkc0829/go-backend-template/internal/shared"
+import "github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 
 // ----------------------------------------------------------------------------
 // Requests

@@ -488,11 +488,11 @@ If the import path/version pins differently, record the exact version. Isolate a
         files:
           - "**/internal/task/**"
         deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/order"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/order"
             desc: "Cross-feature import forbidden."
-          - pkg: "github.com/linkc0829/go-backend-template/internal/payment"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/payment"
             desc: "Cross-feature import forbidden."
-          - pkg: "github.com/linkc0829/go-backend-template/internal/user"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/user"
             desc: "Cross-feature import forbidden."
 ```
 
@@ -920,10 +920,10 @@ runners = append(runners, task.NewRecurringWatcher(taskRepo, 10*time.Second, lg)
 - [x] `make lint`, `go build ./...`.
 
 #### Manual
-- [ ] Inspector: `task.create` with `recurring_interval_seconds=5` and a past `scheduled_at` → the
+- [x] Inspector: `task.create` with `recurring_interval_seconds=5` and a past `scheduled_at` → the
   first run executes (`success`), and within `interval` a NEW `pending` run appears in `task.list`
   with `sequence=2` and `scheduled_at` advanced by 5s.
-- [ ] Confirm exactly one successor per terminated run (no duplicates) — repeated watcher ticks do
+- [x] Confirm exactly one successor per terminated run (no duplicates) — repeated watcher ticks do
   not create extra rows (`SELECT job_id, sequence FROM job_runs ORDER BY 1,2` shows contiguous,
   unique sequences).
 
@@ -931,12 +931,12 @@ runners = append(runners, task.NewRecurringWatcher(taskRepo, 10*time.Second, lg)
 
 ## Final acceptance (all phases)
 
-- [ ] `make lint && make test` pass.
-- [ ] `npx @modelcontextprotocol/inspector go run ./cmd/mcp` → 4 tools; full ticket flow (create past →
+- [x] `make lint && make test` pass.
+- [x] `npx @modelcontextprotocol/inspector go run ./cmd/mcp` → 4 tools; full ticket flow (create past →
   completed ~10s; future + cancel → cancelled; list shows all).
-- [ ] `cmd/api` runs watcher + worker pool + recurring watcher as supervised goroutines; `Ctrl+C`
+- [x] `cmd/api` runs watcher + worker pool + recurring watcher as supervised goroutines; `Ctrl+C`
   drains them (no leak) before closing Redis/Postgres.
-- [ ] Forced-failure run dead-letters after `maxAttempts`; recurring job self-reschedules once per run.
+- [x] Forced-failure run dead-letters after `maxAttempts`; recurring job self-reschedules once per run.
 
 ## Out of scope (from design "What We're NOT Doing")
 

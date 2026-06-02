@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/linkc0829/go-backend-template/internal/shared"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 )
 
 // User is the aggregate root for this feature.

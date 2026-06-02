@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/linkc0829/go-backend-template/internal/bootstrap"
-	"github.com/linkc0829/go-backend-template/internal/platform/config"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/bootstrap"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/config"
 )
 
 func main() {

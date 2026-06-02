@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/linkc0829/go-backend-template/internal/platform/postgres"
-	"github.com/linkc0829/go-backend-template/internal/platform/postgres/sqlc"
-	"github.com/linkc0829/go-backend-template/internal/shared"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres/sqlc"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 )
 
 type PostgresRepo struct {

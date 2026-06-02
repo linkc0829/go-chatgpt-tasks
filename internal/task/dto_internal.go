@@ -5,9 +5,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/linkc0829/go-backend-template/internal/platform/postgres"
-	"github.com/linkc0829/go-backend-template/internal/platform/postgres/sqlc"
-	"github.com/linkc0829/go-backend-template/internal/shared"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres/sqlc"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 )
 
 func jobFromSqlc(r sqlc.Job) *Job {

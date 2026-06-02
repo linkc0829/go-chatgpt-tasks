@@ -10,8 +10,8 @@ import (
 	time "time"
 
 	gomock "github.com/golang/mock/gomock"
-	shared "github.com/linkc0829/go-backend-template/internal/shared"
-	task "github.com/linkc0829/go-backend-template/internal/task"
+	shared "github.com/linkc0829/go-chatgpt-tasks/internal/shared"
+	task "github.com/linkc0829/go-chatgpt-tasks/internal/task"
 )
 
 // MockRepo is a mock of Repo interface.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/linkc0829/go-backend-template/internal/shared"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 )
 
 //go:generate mockgen -source=ports.go -destination=mocks/mock_ports.go -package=mocks

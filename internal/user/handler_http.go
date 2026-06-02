@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/linkc0829/go-backend-template/internal/platform/auth"
-	"github.com/linkc0829/go-backend-template/internal/shared"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/auth"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 )
 
 // service is the inbound port — what the handler depends on.

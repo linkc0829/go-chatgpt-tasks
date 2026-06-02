@@ -42,7 +42,7 @@ linters-settings:
             desc: "Domain must not depend on web frameworks"
           - pkg: "github.com/golang-jwt/jwt"
             desc: "Domain must not depend on auth libraries"
-          - pkg: "github.com/linkc0829/go-backend-template/internal/platform"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/platform"
             desc: "Domain must not depend on platform code"
 
       # ------------------------------------------------------------------
@@ -83,14 +83,14 @@ linters-settings:
         files:
           - "**/internal/user/**"
         deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/task"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/task"
             desc: "Cross-feature import forbidden."
 
       no-cross-feature-task:
         files:
           - "**/internal/task/**"
         deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/user"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/user"
             desc: "Cross-feature import forbidden."
 
       # ------------------------------------------------------------------
@@ -100,7 +100,7 @@ linters-settings:
         files:
           - "**/internal/shared/**"
         deny:
-          - pkg: "github.com/linkc0829/go-backend-template/internal/platform"
+          - pkg: "github.com/linkc0829/go-chatgpt-tasks/internal/platform"
             desc: "Shared kernel must not depend on platform"
           - pkg: "github.com/jackc/pgx"
           - pkg: "github.com/redis/go-redis"

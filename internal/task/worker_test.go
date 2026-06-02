@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/linkc0829/go-backend-template/internal/shared"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 	"go.uber.org/zap"
 )
 

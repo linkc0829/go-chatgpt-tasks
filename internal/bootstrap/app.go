@@ -18,15 +18,15 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"github.com/linkc0829/go-backend-template/internal/platform/auth"
-	"github.com/linkc0829/go-backend-template/internal/platform/config"
-	"github.com/linkc0829/go-backend-template/internal/platform/httpserver"
-	"github.com/linkc0829/go-backend-template/internal/platform/logger"
-	"github.com/linkc0829/go-backend-template/internal/platform/metrics"
-	"github.com/linkc0829/go-backend-template/internal/platform/otel"
-	pgplatform "github.com/linkc0829/go-backend-template/internal/platform/postgres"
-	rdsplatform "github.com/linkc0829/go-backend-template/internal/platform/redis"
-	"github.com/linkc0829/go-backend-template/internal/task"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/auth"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/config"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/httpserver"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/logger"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/metrics"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/otel"
+	pgplatform "github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres"
+	rdsplatform "github.com/linkc0829/go-chatgpt-tasks/internal/platform/redis"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/task"
 )
 
 // App holds every wired-up resource the api binary needs. main.go calls Run()

@@ -75,19 +75,19 @@ func load(requireJWT bool) (*Config, error) {
 
 	// Defaults
 	v.SetDefault("app.env", "development")
-	v.SetDefault("app.name", "go-backend-template")
+	v.SetDefault("app.name", "go-chatgpt-tasks")
 	v.SetDefault("app.shutdown_timeout", "10s")
 	v.SetDefault("http.port", 8080)
 	v.SetDefault("db.max_conns", 20)
 	v.SetDefault("db.min_conns", 2)
 	v.SetDefault("redis.addr", "localhost:6379")
 	v.SetDefault("redis.db", 0)
-	v.SetDefault("jwt.issuer", "go-backend-template")
+	v.SetDefault("jwt.issuer", "go-chatgpt-tasks")
 	v.SetDefault("jwt.secret", "local-dev-secret")
 	v.SetDefault("jwt.ttl", "24h")
 	v.SetDefault("otel.enabled", false)
 	v.SetDefault("otel.endpoint", "localhost:4317")
-	v.SetDefault("otel.service_name", "go-backend-template")
+	v.SetDefault("otel.service_name", "go-chatgpt-tasks")
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("logger.encoding", "json")
 

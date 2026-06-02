@@ -9,9 +9,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"github.com/linkc0829/go-backend-template/internal/platform/auth"
-	"github.com/linkc0829/go-backend-template/internal/task"
-	"github.com/linkc0829/go-backend-template/internal/user"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/auth"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/task"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/user"
 )
 
 // wireFeatures registers every feature slice with the gin engine.

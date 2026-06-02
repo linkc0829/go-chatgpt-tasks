@@ -9,8 +9,8 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
-	shared "github.com/linkc0829/go-backend-template/internal/shared"
-	user "github.com/linkc0829/go-backend-template/internal/user"
+	shared "github.com/linkc0829/go-chatgpt-tasks/internal/shared"
+	user "github.com/linkc0829/go-chatgpt-tasks/internal/user"
 )
 
 // MockRepo is a mock of Repo interface.

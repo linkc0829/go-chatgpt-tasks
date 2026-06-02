@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-commit hook for go-backend-template.
+# Pre-commit hook for go-chatgpt-tasks.
 #
 # Install with: make hooks-install
 # Skip once with: git commit --no-verify

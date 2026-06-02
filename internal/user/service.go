@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/linkc0829/go-backend-template/internal/shared"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 )
 
 // Service holds the use cases for the user feature.
