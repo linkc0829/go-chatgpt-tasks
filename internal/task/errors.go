@@ -7,5 +7,6 @@ var (
 	ErrJobRunNotFound          = errors.New("job run not found")
 	ErrInvalidDescription      = errors.New("invalid description")
 	ErrInvalidSchedule         = errors.New("invalid schedule")
+	ErrInvalidOwner            = errors.New("invalid owner")
 	ErrInvalidStatusTransition = errors.New("invalid status transition")
 )

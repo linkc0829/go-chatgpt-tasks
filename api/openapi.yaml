@@ -16,6 +16,7 @@ security:
 tags:
   - name: auth
   - name: users
+  - name: jobs
 
 paths:
   /healthz:
@@ -75,6 +76,72 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/UserResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/jobs:
+    post:
+      tags: [jobs]
+      summary: Create a scheduled job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateJobRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    get:
+      tags: [jobs]
+      summary: List scheduled job runs
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListRunsResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/jobs/{id}:
+    get:
+      tags: [jobs]
+      summary: Get a scheduled job run
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/jobs/{id}/cancel:
+    post:
+      tags: [jobs]
+      summary: Cancel a scheduled job run
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
 components:
   securitySchemes:
@@ -142,3 +209,34 @@ components:
       properties:
         user:  { $ref: "#/components/schemas/UserResponse" }
         token: { type: string }
+
+    CreateJobRequest:
+      type: object
+      required: [description, scheduled_at]
+      properties:
+        description: { type: string, minLength: 1 }
+        scheduled_at: { type: string, format: date-time }
+        recurring_interval_seconds: { type: integer, minimum: 1 }
+
+    RunResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        job_id: { type: string, format: uuid }
+        status: { type: string }
+        scheduled_at: { type: string, format: date-time }
+        sequence: { type: integer }
+        attempts: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ListRunsResponse:
+      type: object
+      properties:
+        runs:
+          type: array
+          items: { $ref: "#/components/schemas/RunResponse" }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }

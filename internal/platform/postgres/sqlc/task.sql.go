@@ -12,18 +12,18 @@ import (
 )
 
 const countJobRuns = `-- name: CountJobRuns :one
-SELECT COUNT(*) FROM job_runs
+SELECT COUNT(*) FROM job_runs WHERE tenant_id = $1
 `
 
-func (q *Queries) CountJobRuns(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countJobRuns)
+func (q *Queries) CountJobRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countJobRuns, tenantID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const findDueJobRuns = `-- name: FindDueJobRuns :many
-SELECT id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
 FROM job_runs
 WHERE time_bucket <= $1
   AND status = 'pending'
@@ -38,17 +38,31 @@ type FindDueJobRunsParams struct {
 	Lim        int32
 }
 
-func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]JobRun, error) {
+type FindDueJobRunsRow struct {
+	ID          pgtype.UUID
+	TenantID    pgtype.UUID
+	JobID       pgtype.UUID
+	Sequence    int32
+	Status      string
+	ScheduledAt pgtype.Timestamptz
+	TimeBucket  int64
+	Attempts    int32
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]FindDueJobRunsRow, error) {
 	rows, err := q.db.Query(ctx, findDueJobRuns, arg.TimeBucket, arg.DueBefore, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []JobRun{}
+	items := []FindDueJobRunsRow{}
 	for rows.Next() {
-		var i JobRun
+		var i FindDueJobRunsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.TenantID,
 			&i.JobID,
 			&i.Sequence,
 			&i.Status,
@@ -69,15 +83,28 @@ func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) 
 }
 
 const getJobByID = `-- name: GetJobByID :one
-SELECT id, kind, description, interval_seconds, created_at, updated_at
+SELECT id, tenant_id, user_id, kind, description, interval_seconds, created_at, updated_at
 FROM jobs WHERE id = $1
 `
 
-func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error) {
+type GetJobByIDRow struct {
+	ID              pgtype.UUID
+	TenantID        pgtype.UUID
+	UserID          pgtype.UUID
+	Kind            string
+	Description     string
+	IntervalSeconds int64
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error) {
 	row := q.db.QueryRow(ctx, getJobByID, id)
-	var i Job
+	var i GetJobByIDRow
 	err := row.Scan(
 		&i.ID,
+		&i.TenantID,
+		&i.UserID,
 		&i.Kind,
 		&i.Description,
 		&i.IntervalSeconds,
@@ -88,15 +115,29 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error) {
 }
 
 const getJobRunByID = `-- name: GetJobRunByID :one
-SELECT id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
 FROM job_runs WHERE id = $1
 `
 
-func (q *Queries) GetJobRunByID(ctx context.Context, id pgtype.UUID) (JobRun, error) {
+type GetJobRunByIDRow struct {
+	ID          pgtype.UUID
+	TenantID    pgtype.UUID
+	JobID       pgtype.UUID
+	Sequence    int32
+	Status      string
+	ScheduledAt pgtype.Timestamptz
+	TimeBucket  int64
+	Attempts    int32
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+func (q *Queries) GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunByIDRow, error) {
 	row := q.db.QueryRow(ctx, getJobRunByID, id)
-	var i JobRun
+	var i GetJobRunByIDRow
 	err := row.Scan(
 		&i.ID,
+		&i.TenantID,
 		&i.JobID,
 		&i.Sequence,
 		&i.Status,
@@ -110,13 +151,16 @@ func (q *Queries) GetJobRunByID(ctx context.Context, id pgtype.UUID) (JobRun, er
 }
 
 const insertJob = `-- name: InsertJob :exec
-INSERT INTO jobs (id, kind, description, interval_seconds, created_at, updated_at)
-VALUES ($1, $2, $3,
-        $4, $5, $6)
+INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, created_at, updated_at)
+VALUES ($1, $2, $3, $4,
+        $5, $6, $7,
+        $8)
 `
 
 type InsertJobParams struct {
 	ID              pgtype.UUID
+	TenantID        pgtype.UUID
+	UserID          pgtype.UUID
 	Kind            string
 	Description     string
 	IntervalSeconds int64
@@ -127,6 +171,8 @@ type InsertJobParams struct {
 func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 	_, err := q.db.Exec(ctx, insertJob,
 		arg.ID,
+		arg.TenantID,
+		arg.UserID,
 		arg.Kind,
 		arg.Description,
 		arg.IntervalSeconds,
@@ -137,15 +183,16 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 }
 
 const insertJobRun = `-- name: InsertJobRun :exec
-INSERT INTO job_runs (id, job_id, sequence, status, scheduled_at, time_bucket,
+INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
                       attempts, created_at, updated_at)
 VALUES ($1, $2, $3, $4,
         $5, $6, $7,
-        $8, $9)
+        $8, $9, $10)
 `
 
 type InsertJobRunParams struct {
 	ID          pgtype.UUID
+	TenantID    pgtype.UUID
 	JobID       pgtype.UUID
 	Sequence    int32
 	Status      string
@@ -159,6 +206,7 @@ type InsertJobRunParams struct {
 func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) error {
 	_, err := q.db.Exec(ctx, insertJobRun,
 		arg.ID,
+		arg.TenantID,
 		arg.JobID,
 		arg.Sequence,
 		arg.Status,
@@ -172,16 +220,17 @@ func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) erro
 }
 
 const insertJobRunIfAbsent = `-- name: InsertJobRunIfAbsent :execrows
-INSERT INTO job_runs (id, job_id, sequence, status, scheduled_at, time_bucket,
+INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
                       attempts, created_at, updated_at)
-VALUES ($1, $2, $3, 'pending',
-        $4, $5, 0,
-        $6, $7)
+VALUES ($1, $2, $3, $4, 'pending',
+        $5, $6, 0,
+        $7, $8)
 ON CONFLICT (job_id, sequence) DO NOTHING
 `
 
 type InsertJobRunIfAbsentParams struct {
 	ID          pgtype.UUID
+	TenantID    pgtype.UUID
 	JobID       pgtype.UUID
 	Sequence    int32
 	ScheduledAt pgtype.Timestamptz
@@ -193,6 +242,7 @@ type InsertJobRunIfAbsentParams struct {
 func (q *Queries) InsertJobRunIfAbsent(ctx context.Context, arg InsertJobRunIfAbsentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, insertJobRunIfAbsent,
 		arg.ID,
+		arg.TenantID,
 		arg.JobID,
 		arg.Sequence,
 		arg.ScheduledAt,
@@ -207,12 +257,15 @@ func (q *Queries) InsertJobRunIfAbsent(ctx context.Context, arg InsertJobRunIfAb
 }
 
 const insertRunEvent = `-- name: InsertRunEvent :exec
-INSERT INTO run_events (id, job_run_id, status, created_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO run_events (id, tenant_id, job_id, job_run_id, status, created_at)
+VALUES ($1, $2, $3, $4,
+        $5, $6)
 `
 
 type InsertRunEventParams struct {
 	ID        pgtype.UUID
+	TenantID  pgtype.UUID
+	JobID     pgtype.UUID
 	JobRunID  pgtype.UUID
 	Status    string
 	CreatedAt pgtype.Timestamptz
@@ -221,6 +274,8 @@ type InsertRunEventParams struct {
 func (q *Queries) InsertRunEvent(ctx context.Context, arg InsertRunEventParams) error {
 	_, err := q.db.Exec(ctx, insertRunEvent,
 		arg.ID,
+		arg.TenantID,
+		arg.JobID,
 		arg.JobRunID,
 		arg.Status,
 		arg.CreatedAt,
@@ -229,27 +284,44 @@ func (q *Queries) InsertRunEvent(ctx context.Context, arg InsertRunEventParams) 
 }
 
 const listJobRuns = `-- name: ListJobRuns :many
-SELECT id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
-FROM job_runs ORDER BY created_at DESC
-LIMIT $2 OFFSET $1
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
+FROM job_runs
+WHERE tenant_id = $1
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $2
 `
 
 type ListJobRunsParams struct {
+	TenantID   pgtype.UUID
 	PageOffset int32
 	PageLimit  int32
 }
 
-func (q *Queries) ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]JobRun, error) {
-	rows, err := q.db.Query(ctx, listJobRuns, arg.PageOffset, arg.PageLimit)
+type ListJobRunsRow struct {
+	ID          pgtype.UUID
+	TenantID    pgtype.UUID
+	JobID       pgtype.UUID
+	Sequence    int32
+	Status      string
+	ScheduledAt pgtype.Timestamptz
+	TimeBucket  int64
+	Attempts    int32
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+func (q *Queries) ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]ListJobRunsRow, error) {
+	rows, err := q.db.Query(ctx, listJobRuns, arg.TenantID, arg.PageOffset, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []JobRun{}
+	items := []ListJobRunsRow{}
 	for rows.Next() {
-		var i JobRun
+		var i ListJobRunsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.TenantID,
 			&i.JobID,
 			&i.Sequence,
 			&i.Status,
@@ -270,7 +342,7 @@ func (q *Queries) ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]Job
 }
 
 const listTerminalRecurringRuns = `-- name: ListTerminalRecurringRuns :many
-SELECT r.id, r.job_id, r.sequence, r.scheduled_at, j.interval_seconds
+SELECT r.id, r.tenant_id, r.job_id, r.sequence, r.scheduled_at, j.interval_seconds
 FROM run_events e
 JOIN job_runs r ON r.id = e.job_run_id
 JOIN jobs     j ON j.id = r.job_id
@@ -290,6 +362,7 @@ type ListTerminalRecurringRunsParams struct {
 
 type ListTerminalRecurringRunsRow struct {
 	ID              pgtype.UUID
+	TenantID        pgtype.UUID
 	JobID           pgtype.UUID
 	Sequence        int32
 	ScheduledAt     pgtype.Timestamptz
@@ -307,6 +380,7 @@ func (q *Queries) ListTerminalRecurringRuns(ctx context.Context, arg ListTermina
 		var i ListTerminalRecurringRunsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.TenantID,
 			&i.JobID,
 			&i.Sequence,
 			&i.ScheduledAt,

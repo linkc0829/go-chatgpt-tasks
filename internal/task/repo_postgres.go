@@ -58,11 +58,12 @@ func (r *PostgresRepo) FindRunByID(ctx context.Context, id shared.JobRunID) (*Jo
 		}
 		return nil, fmt.Errorf("query job run: %w", err)
 	}
-	return jobRunFromSqlc(row), nil
+	return jobRunFromGetByIDRow(row), nil
 }
 
-func (r *PostgresRepo) ListRuns(ctx context.Context, p shared.Pagination) ([]*JobRun, int64, error) {
+func (r *PostgresRepo) ListRuns(ctx context.Context, tenantID shared.TenantID, p shared.Pagination) ([]*JobRun, int64, error) {
 	rows, err := r.q.ListJobRuns(ctx, sqlc.ListJobRunsParams{
+		TenantID:   postgres.UUIDToPg(uuid.UUID(tenantID)),
 		PageLimit:  int32(p.Limit),  //nolint:gosec // shared pagination clamps to maxLimit=100.
 		PageOffset: int32(p.Offset), //nolint:gosec // shared pagination normalizes to non-negative API bounds.
 	})
@@ -72,10 +73,10 @@ func (r *PostgresRepo) ListRuns(ctx context.Context, p shared.Pagination) ([]*Jo
 
 	out := make([]*JobRun, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, jobRunFromSqlc(row))
+		out = append(out, jobRunFromListRow(row))
 	}
 
-	total, err := r.q.CountJobRuns(ctx)
+	total, err := r.q.CountJobRuns(ctx, postgres.UUIDToPg(uuid.UUID(tenantID)))
 	if err != nil {
 		return nil, 0, fmt.Errorf("count job runs: %w", err)
 	}
@@ -106,7 +107,7 @@ func (r *PostgresRepo) FindDueRuns(
 
 	out := make([]*JobRun, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, jobRunFromSqlc(row))
+		out = append(out, jobRunFromDueRow(row))
 	}
 	return out, nil
 }

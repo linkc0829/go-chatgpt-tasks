@@ -26,7 +26,7 @@ func (r *recurringWatcherRepo) UpdateRunStatus(context.Context, *JobRun) error {
 func (r *recurringWatcherRepo) FindRunByID(context.Context, shared.JobRunID) (*JobRun, error) {
 	return nil, ErrJobRunNotFound
 }
-func (r *recurringWatcherRepo) ListRuns(context.Context, shared.Pagination) ([]*JobRun, int64, error) {
+func (r *recurringWatcherRepo) ListRuns(context.Context, shared.TenantID, shared.Pagination) ([]*JobRun, int64, error) {
 	return nil, 0, nil
 }
 func (r *recurringWatcherRepo) AppendEvent(context.Context, *RunEvent) error { return nil }
@@ -54,6 +54,7 @@ func (r *recurringWatcherRepo) FindTerminalRecurringRuns(
 func TestRecurringWatcher_scanOnceCreatesNextRun(t *testing.T) {
 	scheduledAt := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	spec := NextRunSpec{
+		TenantID:    shared.NewTenantID(),
 		JobID:       shared.NewJobID(),
 		Sequence:    1,
 		ScheduledAt: scheduledAt,
@@ -84,6 +85,7 @@ func TestRecurringWatcher_scanOnceCreatesNextRun(t *testing.T) {
 
 func TestRecurringWatcher_scanOnceConflictIsNoop(t *testing.T) {
 	spec := NextRunSpec{
+		TenantID:    shared.NewTenantID(),
 		JobID:       shared.NewJobID(),
 		Sequence:    1,
 		ScheduledAt: time.Now().UTC(),

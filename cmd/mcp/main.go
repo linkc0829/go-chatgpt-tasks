@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"strings"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/config"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/task"
 	taskmcp "github.com/linkc0829/go-chatgpt-tasks/internal/task/mcp"
 )
@@ -38,8 +40,12 @@ func main() {
 	defer pool.Close()
 
 	svc := task.NewService(task.NewPostgresRepo(pool))
+	ident, err := mcpIdentity()
+	if err != nil {
+		log.Fatalf("mcp identity: %v", err)
+	}
 	reg := taskmcp.NewRegistry()
-	taskmcp.Register(reg, svc)
+	taskmcp.Register(reg, svc, ident)
 
 	server := sdkmcp.NewServer(
 		&sdkmcp.Implementation{Name: "task-scheduler", Version: "0.1.0"},
@@ -50,6 +56,27 @@ func main() {
 	if err := server.Run(ctx, &sdkmcp.StdioTransport{}); err != nil && !isNormalStdioClose(err) {
 		log.Fatalf("mcp serve: %v", err)
 	}
+}
+
+func mcpIdentity() (task.Identity, error) {
+	tenantRaw := os.Getenv("MCP_TENANT_ID")
+	if tenantRaw == "" {
+		tenantRaw = "00000000-0000-0000-0000-0000000000cc"
+	}
+	userRaw := os.Getenv("MCP_USER_ID")
+	if userRaw == "" {
+		userRaw = "00000000-0000-0000-0000-0000000000dd"
+	}
+
+	tenantID, err := shared.ParseTenantID(tenantRaw)
+	if err != nil {
+		return task.Identity{}, fmt.Errorf("parse MCP_TENANT_ID: %w", err)
+	}
+	userID, err := shared.ParseUserID(userRaw)
+	if err != nil {
+		return task.Identity{}, fmt.Errorf("parse MCP_USER_ID: %w", err)
+	}
+	return task.Identity{TenantID: tenantID, UserID: userID}, nil
 }
 
 func loadLocalMCPConfig(loadErr error) (*config.Config, error) {

@@ -1,0 +1,6 @@
+DROP INDEX IF EXISTS idx_job_runs_tenant;
+DROP INDEX IF EXISTS idx_jobs_tenant;
+
+ALTER TABLE run_events DROP COLUMN IF EXISTS job_id, DROP COLUMN IF EXISTS tenant_id;
+ALTER TABLE job_runs DROP COLUMN IF EXISTS tenant_id;
+ALTER TABLE jobs DROP COLUMN IF EXISTS user_id, DROP COLUMN IF EXISTS tenant_id;

@@ -50,7 +50,7 @@ func (rw *RecurringWatcher) scanOnce(ctx context.Context) {
 	}
 
 	for _, spec := range specs {
-		next, err := NewJobRun(spec.JobID, spec.Sequence+1, spec.ScheduledAt.Add(spec.Interval))
+		next, err := NewJobRun(spec.TenantID, spec.JobID, spec.Sequence+1, spec.ScheduledAt.Add(spec.Interval))
 		if err != nil {
 			rw.log.Error("recurring watcher build next run", zap.Error(err))
 			continue

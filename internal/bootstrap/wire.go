@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/auth"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/task"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/user"
 )
@@ -38,6 +40,13 @@ func wireFeatures(
 	user.RegisterRoutes(api, userHandler, authMgr)
 
 	taskRepo := task.NewPostgresRepo(pool)
+	taskSvc := task.NewService(taskRepo)
+	taskResolver := task.TenantResolverFunc(func(_ context.Context, uid shared.UserID) (shared.TenantID, error) {
+		return shared.ParseTenantID(uid.String())
+	})
+	taskHandler := task.NewHandler(taskSvc, taskResolver)
+	task.RegisterRoutes(api, taskHandler, authMgr)
+
 	taskQueue := task.NewRedisQueue(rdb)
 	watcher := task.NewWatcher(taskRepo, taskQueue, 5*time.Second, lg)
 	exec := task.NewStubExecutor(lg)

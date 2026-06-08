@@ -13,7 +13,7 @@ type Repo interface {
 	SaveRun(ctx context.Context, r *JobRun) error
 	UpdateRunStatus(ctx context.Context, r *JobRun) error
 	FindRunByID(ctx context.Context, id shared.JobRunID) (*JobRun, error)
-	ListRuns(ctx context.Context, p shared.Pagination) ([]*JobRun, int64, error)
+	ListRuns(ctx context.Context, tenantID shared.TenantID, p shared.Pagination) ([]*JobRun, int64, error)
 	AppendEvent(ctx context.Context, e *RunEvent) error
 	FindDueRuns(ctx context.Context, bucket int64, before time.Time, limit int32) ([]*JobRun, error)
 	FindJob(ctx context.Context, id shared.JobID) (*Job, error)
@@ -37,4 +37,14 @@ type QueuedMessage struct {
 
 type Executor interface {
 	Execute(ctx context.Context, r *JobRun) error
+}
+
+type TenantResolver interface {
+	ResolveTenant(ctx context.Context, userID shared.UserID) (shared.TenantID, error)
+}
+
+type TenantResolverFunc func(ctx context.Context, userID shared.UserID) (shared.TenantID, error)
+
+func (f TenantResolverFunc) ResolveTenant(ctx context.Context, userID shared.UserID) (shared.TenantID, error) {
+	return f(ctx, userID)
 }

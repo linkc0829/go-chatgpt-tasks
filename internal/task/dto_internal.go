@@ -10,9 +10,11 @@ import (
 	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 )
 
-func jobFromSqlc(r sqlc.Job) *Job {
+func jobFromSqlc(r sqlc.GetJobByIDRow) *Job {
 	return rehydrateJob(
 		shared.JobID(postgres.PgToUUID(r.ID)),
+		shared.TenantID(postgres.PgToUUID(r.TenantID)),
+		shared.UserID(postgres.PgToUUID(r.UserID)),
 		Kind(r.Kind),
 		r.Description,
 		time.Duration(r.IntervalSeconds)*time.Second,
@@ -24,6 +26,8 @@ func jobFromSqlc(r sqlc.Job) *Job {
 func jobToInsertParams(j *Job) sqlc.InsertJobParams {
 	return sqlc.InsertJobParams{
 		ID:              postgres.UUIDToPg(uuid.UUID(j.ID())),
+		TenantID:        postgres.UUIDToPg(uuid.UUID(j.TenantID())),
+		UserID:          postgres.UUIDToPg(uuid.UUID(j.UserID())),
 		Kind:            string(j.Kind()),
 		Description:     j.Description(),
 		IntervalSeconds: int64(j.Interval() / time.Second),
@@ -32,9 +36,40 @@ func jobToInsertParams(j *Job) sqlc.InsertJobParams {
 	}
 }
 
-func jobRunFromSqlc(r sqlc.JobRun) *JobRun {
+func jobRunFromGetByIDRow(r sqlc.GetJobRunByIDRow) *JobRun {
 	return rehydrateJobRun(
 		shared.JobRunID(postgres.PgToUUID(r.ID)),
+		shared.TenantID(postgres.PgToUUID(r.TenantID)),
+		shared.JobID(postgres.PgToUUID(r.JobID)),
+		int(r.Sequence),
+		Status(r.Status),
+		postgres.PgToTime(r.ScheduledAt),
+		r.TimeBucket,
+		int(r.Attempts),
+		postgres.PgToTime(r.CreatedAt),
+		postgres.PgToTime(r.UpdatedAt),
+	)
+}
+
+func jobRunFromListRow(r sqlc.ListJobRunsRow) *JobRun {
+	return rehydrateJobRun(
+		shared.JobRunID(postgres.PgToUUID(r.ID)),
+		shared.TenantID(postgres.PgToUUID(r.TenantID)),
+		shared.JobID(postgres.PgToUUID(r.JobID)),
+		int(r.Sequence),
+		Status(r.Status),
+		postgres.PgToTime(r.ScheduledAt),
+		r.TimeBucket,
+		int(r.Attempts),
+		postgres.PgToTime(r.CreatedAt),
+		postgres.PgToTime(r.UpdatedAt),
+	)
+}
+
+func jobRunFromDueRow(r sqlc.FindDueJobRunsRow) *JobRun {
+	return rehydrateJobRun(
+		shared.JobRunID(postgres.PgToUUID(r.ID)),
+		shared.TenantID(postgres.PgToUUID(r.TenantID)),
 		shared.JobID(postgres.PgToUUID(r.JobID)),
 		int(r.Sequence),
 		Status(r.Status),
@@ -49,6 +84,7 @@ func jobRunFromSqlc(r sqlc.JobRun) *JobRun {
 func jobRunToInsertParams(r *JobRun) sqlc.InsertJobRunParams {
 	return sqlc.InsertJobRunParams{
 		ID:          postgres.UUIDToPg(uuid.UUID(r.ID())),
+		TenantID:    postgres.UUIDToPg(uuid.UUID(r.TenantID())),
 		JobID:       postgres.UUIDToPg(uuid.UUID(r.JobID())),
 		Sequence:    int32(r.Sequence()), //nolint:gosec // domain validation keeps sequence positive and bounded by DB int use.
 		Status:      string(r.Status()),
@@ -72,6 +108,7 @@ func jobRunToUpdateStatusParams(r *JobRun) sqlc.UpdateJobRunStatusParams {
 func jobRunToInsertIfAbsentParams(r *JobRun) sqlc.InsertJobRunIfAbsentParams {
 	return sqlc.InsertJobRunIfAbsentParams{
 		ID:          postgres.UUIDToPg(uuid.UUID(r.ID())),
+		TenantID:    postgres.UUIDToPg(uuid.UUID(r.TenantID())),
 		JobID:       postgres.UUIDToPg(uuid.UUID(r.JobID())),
 		Sequence:    int32(r.Sequence()), //nolint:gosec // domain validation keeps sequence positive and bounded by DB int use.
 		ScheduledAt: postgres.TimeToPg(r.ScheduledAt()),
@@ -84,6 +121,8 @@ func jobRunToInsertIfAbsentParams(r *JobRun) sqlc.InsertJobRunIfAbsentParams {
 func runEventToInsertParams(e *RunEvent) sqlc.InsertRunEventParams {
 	return sqlc.InsertRunEventParams{
 		ID:        postgres.UUIDToPg(uuid.UUID(e.ID())),
+		TenantID:  postgres.UUIDToPg(uuid.UUID(e.TenantID())),
+		JobID:     postgres.UUIDToPg(uuid.UUID(e.JobID())),
 		JobRunID:  postgres.UUIDToPg(uuid.UUID(e.JobRunID())),
 		Status:    string(e.Status()),
 		CreatedAt: postgres.TimeToPg(e.CreatedAt()),
@@ -91,6 +130,7 @@ func runEventToInsertParams(e *RunEvent) sqlc.InsertRunEventParams {
 }
 
 type NextRunSpec struct {
+	TenantID    shared.TenantID
 	JobID       shared.JobID
 	Sequence    int
 	ScheduledAt time.Time
@@ -105,6 +145,7 @@ type JobRunMsg struct {
 func nextRunSpecFromSqlc(r sqlc.ListTerminalRecurringRunsRow) NextRunSpec {
 	return NextRunSpec{
 		JobID:       shared.JobID(postgres.PgToUUID(r.JobID)),
+		TenantID:    shared.TenantID(postgres.PgToUUID(r.TenantID)),
 		Sequence:    int(r.Sequence),
 		ScheduledAt: postgres.PgToTime(r.ScheduledAt),
 		Interval:    time.Duration(r.IntervalSeconds) * time.Second,

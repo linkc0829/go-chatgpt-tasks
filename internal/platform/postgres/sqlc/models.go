@@ -15,6 +15,8 @@ type Job struct {
 	IntervalSeconds int64
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
+	TenantID        pgtype.UUID
+	UserID          pgtype.UUID
 }
 
 type JobRun struct {
@@ -27,6 +29,7 @@ type JobRun struct {
 	Attempts    int32
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+	TenantID    pgtype.UUID
 }
 
 type RunEvent struct {
@@ -34,6 +37,8 @@ type RunEvent struct {
 	JobRunID  pgtype.UUID
 	Status    string
 	CreatedAt pgtype.Timestamptz
+	TenantID  pgtype.UUID
+	JobID     pgtype.UUID
 }
 
 type User struct {

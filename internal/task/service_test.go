@@ -61,7 +61,7 @@ func (f *fakeRepo) FindRunByID(_ context.Context, _ shared.JobRunID) (*JobRun, e
 	return f.findRun, f.findRunErr
 }
 
-func (f *fakeRepo) ListRuns(_ context.Context, _ shared.Pagination) ([]*JobRun, int64, error) {
+func (f *fakeRepo) ListRuns(_ context.Context, _ shared.TenantID, _ shared.Pagination) ([]*JobRun, int64, error) {
 	return f.listRuns, f.listTotal, f.listErr
 }
 
@@ -88,13 +88,14 @@ func (f *fakeRepo) FindTerminalRecurringRuns(_ context.Context, _ time.Time, _ i
 }
 
 func TestService_Create(t *testing.T) {
+	ident := testIdentity()
 	scheduledAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 
 	t.Run("create_one_off_pending_run", func(t *testing.T) {
 		repo := &fakeRepo{}
 		svc := NewService(repo)
 
-		run, err := svc.Create(context.Background(), CreateInput{
+		run, err := svc.Create(context.Background(), ident, CreateInput{
 			Description: "Summarize tech news",
 			ScheduledAt: scheduledAt,
 		})
@@ -103,6 +104,9 @@ func TestService_Create(t *testing.T) {
 		assert.Equal(t, 1, repo.saveJobCalls)
 		assert.Equal(t, 1, repo.saveRunCalls)
 		assert.Equal(t, KindOneOff, repo.lastSavedJob.Kind())
+		assert.Equal(t, ident.TenantID, repo.lastSavedJob.TenantID())
+		assert.Equal(t, ident.UserID, repo.lastSavedJob.UserID())
+		assert.Equal(t, ident.TenantID, run.TenantID())
 		assert.Equal(t, StatusPending, run.Status())
 		assert.Equal(t, scheduledAt, run.ScheduledAt())
 	})
@@ -111,7 +115,7 @@ func TestService_Create(t *testing.T) {
 		repo := &fakeRepo{}
 		svc := NewService(repo)
 
-		_, err := svc.Create(context.Background(), CreateInput{
+		_, err := svc.Create(context.Background(), ident, CreateInput{
 			Description: "Summarize tech news",
 			ScheduledAt: scheduledAt,
 			Interval:    5 * time.Second,
@@ -126,7 +130,7 @@ func TestService_Create(t *testing.T) {
 		repo := &fakeRepo{}
 		svc := NewService(repo)
 
-		_, err := svc.Create(context.Background(), CreateInput{
+		_, err := svc.Create(context.Background(), ident, CreateInput{
 			Description: "",
 			ScheduledAt: scheduledAt,
 		})
@@ -137,13 +141,42 @@ func TestService_Create(t *testing.T) {
 	})
 }
 
+func TestService_TenantIsolation(t *testing.T) {
+	tenantA := testIdentity()
+	tenantB := Identity{TenantID: shared.NewTenantID(), UserID: shared.NewUserID()}
+	scheduledAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	t.Run("list_is_scoped_by_tenant", func(t *testing.T) {
+		repo := &fakeRepo{listRuns: []*JobRun{}, listTotal: 0}
+		svc := NewService(repo)
+
+		runs, total, err := svc.List(context.Background(), tenantB, shared.NewPagination(20, 0))
+
+		require.NoError(t, err)
+		assert.Empty(t, runs)
+		assert.Equal(t, int64(0), total)
+	})
+
+	t.Run("status_hides_cross_tenant_run", func(t *testing.T) {
+		run, err := NewJobRun(tenantA.TenantID, shared.NewJobID(), 1, scheduledAt)
+		require.NoError(t, err)
+		repo := &fakeRepo{findRun: run}
+		svc := NewService(repo)
+
+		_, err = svc.Status(context.Background(), tenantB, run.ID())
+
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrJobRunNotFound), "Status() error = %v, want %v", err, ErrJobRunNotFound)
+	})
+}
+
 func TestService_Cancel(t *testing.T) {
 	t.Run("cancel_pending_run", func(t *testing.T) {
 		run := newTestRun(t)
 		repo := &fakeRepo{findRun: run}
 		svc := NewService(repo)
 
-		got, err := svc.Cancel(context.Background(), run.ID())
+		got, err := svc.Cancel(context.Background(), identityForRun(run), run.ID())
 
 		require.NoError(t, err)
 		assert.Equal(t, StatusCancelled, got.Status())
@@ -160,7 +193,7 @@ func TestService_Cancel(t *testing.T) {
 		repo := &fakeRepo{findRun: run}
 		svc := NewService(repo)
 
-		_, err := svc.Cancel(context.Background(), run.ID())
+		_, err := svc.Cancel(context.Background(), identityForRun(run), run.ID())
 
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, ErrInvalidStatusTransition), "Cancel() error = %v, want %v", err, ErrInvalidStatusTransition)
@@ -171,7 +204,7 @@ func TestService_Cancel(t *testing.T) {
 		repo := &fakeRepo{findRunErr: ErrJobRunNotFound}
 		svc := NewService(repo)
 
-		_, err := svc.Status(context.Background(), shared.NewJobRunID())
+		_, err := svc.Status(context.Background(), testIdentity(), shared.NewJobRunID())
 
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, ErrJobRunNotFound), "Status() error = %v, want %v", err, ErrJobRunNotFound)
@@ -182,10 +215,19 @@ func newTestRun(t *testing.T) *JobRun {
 	t.Helper()
 
 	run, err := NewJobRun(
+		testIdentity().TenantID,
 		shared.NewJobID(),
 		1,
 		time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
 	)
 	require.NoError(t, err)
 	return run
+}
+
+func testIdentity() Identity {
+	return Identity{TenantID: shared.NewTenantID(), UserID: shared.NewUserID()}
+}
+
+func identityForRun(run *JobRun) Identity {
+	return Identity{TenantID: run.TenantID(), UserID: shared.NewUserID()}
 }

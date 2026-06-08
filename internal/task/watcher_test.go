@@ -28,7 +28,7 @@ func (r *watcherRepo) UpdateRunStatus(_ context.Context, run *JobRun) error {
 func (r *watcherRepo) FindRunByID(context.Context, shared.JobRunID) (*JobRun, error) {
 	return nil, ErrJobRunNotFound
 }
-func (r *watcherRepo) ListRuns(context.Context, shared.Pagination) ([]*JobRun, int64, error) {
+func (r *watcherRepo) ListRuns(context.Context, shared.TenantID, shared.Pagination) ([]*JobRun, int64, error) {
 	return nil, 0, nil
 }
 func (r *watcherRepo) AppendEvent(context.Context, *RunEvent) error { return nil }
@@ -141,6 +141,7 @@ func newWatcherRun(t *testing.T) *JobRun {
 	t.Helper()
 
 	run, err := NewJobRun(
+		shared.NewTenantID(),
 		shared.NewJobID(),
 		1,
 		time.Now().UTC().Add(-time.Minute),

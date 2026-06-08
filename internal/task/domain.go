@@ -29,6 +29,8 @@ const (
 
 type Job struct {
 	id          shared.JobID
+	tenantID    shared.TenantID
+	userID      shared.UserID
 	kind        Kind
 	description string
 	interval    time.Duration
@@ -38,6 +40,7 @@ type Job struct {
 
 type JobRun struct {
 	id          shared.JobRunID
+	tenantID    shared.TenantID
 	jobID       shared.JobID
 	sequence    int
 	status      Status
@@ -50,6 +53,8 @@ type JobRun struct {
 
 type RunEvent struct {
 	id        shared.RunEventID
+	tenantID  shared.TenantID
+	jobID     shared.JobID
 	jobRunID  shared.JobRunID
 	status    Status
 	createdAt time.Time
@@ -59,7 +64,31 @@ func bucketOf(t time.Time) int64 {
 	return t.UTC().Truncate(time.Hour).Unix()
 }
 
-func NewJob(kind Kind, description string, interval time.Duration) (*Job, error) {
+var (
+	LegacyTenantID = mustTenantID("00000000-0000-0000-0000-0000000000aa")
+	LegacyUserID   = mustUserID("00000000-0000-0000-0000-0000000000bb")
+)
+
+func mustTenantID(s string) shared.TenantID {
+	id, err := shared.ParseTenantID(s)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
+func mustUserID(s string) shared.UserID {
+	id, err := shared.ParseUserID(s)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
+func NewJob(tenantID shared.TenantID, userID shared.UserID, kind Kind, description string, interval time.Duration) (*Job, error) {
+	if tenantID.IsZero() || userID.IsZero() {
+		return nil, ErrInvalidOwner
+	}
 	if strings.TrimSpace(description) == "" {
 		return nil, ErrInvalidDescription
 	}
@@ -73,6 +102,8 @@ func NewJob(kind Kind, description string, interval time.Duration) (*Job, error)
 	now := time.Now().UTC()
 	return &Job{
 		id:          shared.NewJobID(),
+		tenantID:    tenantID,
+		userID:      userID,
 		kind:        kind,
 		description: description,
 		interval:    interval,
@@ -81,8 +112,8 @@ func NewJob(kind Kind, description string, interval time.Duration) (*Job, error)
 	}, nil
 }
 
-func NewJobRun(jobID shared.JobID, sequence int, scheduledAt time.Time) (*JobRun, error) {
-	if jobID.IsZero() || sequence < 1 || scheduledAt.IsZero() {
+func NewJobRun(tenantID shared.TenantID, jobID shared.JobID, sequence int, scheduledAt time.Time) (*JobRun, error) {
+	if tenantID.IsZero() || jobID.IsZero() || sequence < 1 || scheduledAt.IsZero() {
 		return nil, ErrInvalidSchedule
 	}
 
@@ -90,6 +121,7 @@ func NewJobRun(jobID shared.JobID, sequence int, scheduledAt time.Time) (*JobRun
 	scheduledAt = scheduledAt.UTC()
 	return &JobRun{
 		id:          shared.NewJobRunID(),
+		tenantID:    tenantID,
 		jobID:       jobID,
 		sequence:    sequence,
 		status:      StatusPending,
@@ -100,9 +132,11 @@ func NewJobRun(jobID shared.JobID, sequence int, scheduledAt time.Time) (*JobRun
 	}, nil
 }
 
-func NewRunEvent(runID shared.JobRunID, s Status) *RunEvent {
+func NewRunEvent(tenantID shared.TenantID, jobID shared.JobID, runID shared.JobRunID, s Status) *RunEvent {
 	return &RunEvent{
 		id:        shared.NewRunEventID(),
+		tenantID:  tenantID,
+		jobID:     jobID,
 		jobRunID:  runID,
 		status:    s,
 		createdAt: time.Now().UTC(),
@@ -111,6 +145,8 @@ func NewRunEvent(runID shared.JobRunID, s Status) *RunEvent {
 
 func rehydrateJob(
 	id shared.JobID,
+	tenantID shared.TenantID,
+	userID shared.UserID,
 	kind Kind,
 	description string,
 	interval time.Duration,
@@ -119,6 +155,8 @@ func rehydrateJob(
 ) *Job {
 	return &Job{
 		id:          id,
+		tenantID:    tenantID,
+		userID:      userID,
 		kind:        kind,
 		description: description,
 		interval:    interval,
@@ -129,6 +167,7 @@ func rehydrateJob(
 
 func rehydrateJobRun(
 	id shared.JobRunID,
+	tenantID shared.TenantID,
 	jobID shared.JobID,
 	sequence int,
 	status Status,
@@ -140,6 +179,7 @@ func rehydrateJobRun(
 ) *JobRun {
 	return &JobRun{
 		id:          id,
+		tenantID:    tenantID,
 		jobID:       jobID,
 		sequence:    sequence,
 		status:      status,
@@ -211,12 +251,17 @@ func (r *JobRun) IsTerminal() bool {
 }
 
 func (j *Job) ID() shared.JobID          { return j.id }
+func (j *Job) TenantID() shared.TenantID { return j.tenantID }
+func (j *Job) UserID() shared.UserID     { return j.userID }
 func (j *Job) Kind() Kind                { return j.kind }
 func (j *Job) Description() string       { return j.description }
 func (j *Job) Interval() time.Duration   { return j.interval }
 func (j *Job) CreatedAt() time.Time      { return j.createdAt }
 func (j *Job) UpdatedAt() time.Time      { return j.updatedAt }
 func (r *JobRun) ID() shared.JobRunID    { return r.id }
+func (r *JobRun) TenantID() shared.TenantID {
+	return r.tenantID
+}
 func (r *JobRun) JobID() shared.JobID    { return r.jobID }
 func (r *JobRun) Sequence() int          { return r.sequence }
 func (r *JobRun) Status() Status         { return r.status }
@@ -228,6 +273,8 @@ func (r *JobRun) UpdatedAt() time.Time   { return r.updatedAt }
 func (e *RunEvent) ID() shared.RunEventID {
 	return e.id
 }
+func (e *RunEvent) TenantID() shared.TenantID { return e.tenantID }
+func (e *RunEvent) JobID() shared.JobID       { return e.jobID }
 func (e *RunEvent) JobRunID() shared.JobRunID { return e.jobRunID }
 func (e *RunEvent) Status() Status            { return e.status }
 func (e *RunEvent) CreatedAt() time.Time      { return e.createdAt }

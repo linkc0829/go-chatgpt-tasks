@@ -110,7 +110,7 @@ func (w *Worker) process(ctx context.Context, qm QueuedMessage) {
 	if err := w.persistStatus(ctx, run); err != nil {
 		return
 	}
-	w.appendEvent(ctx, run.ID(), StatusRunning)
+	w.appendEvent(ctx, run, StatusRunning)
 
 	if err := w.exec.Execute(ctx, run); err != nil {
 		w.handleFailure(ctx, qm, run, err)
@@ -124,7 +124,7 @@ func (w *Worker) process(ctx context.Context, qm QueuedMessage) {
 	if err := w.persistStatus(ctx, run); err != nil {
 		return
 	}
-	w.appendEvent(ctx, run.ID(), StatusSuccess)
+	w.appendEvent(ctx, run, StatusSuccess)
 	w.ack(ctx, qm.StreamID)
 }
 
@@ -137,7 +137,7 @@ func (w *Worker) handleFailure(ctx context.Context, qm QueuedMessage, run *JobRu
 		if err := w.persistStatus(ctx, run); err != nil {
 			return
 		}
-		w.appendEvent(ctx, run.ID(), StatusFailed)
+		w.appendEvent(ctx, run, StatusFailed)
 		if err := w.queue.DeadLetter(ctx, qm.Msg); err != nil {
 			w.log.Error("worker dead letter", zap.String("job_run_id", run.ID().String()), zap.Error(err))
 			return
@@ -153,7 +153,7 @@ func (w *Worker) handleFailure(ctx context.Context, qm QueuedMessage, run *JobRu
 	if err := w.persistStatus(ctx, run); err != nil {
 		return
 	}
-	w.appendEvent(ctx, run.ID(), StatusRetry)
+	w.appendEvent(ctx, run, StatusRetry)
 	if err := w.queue.Enqueue(ctx, JobRunMsg{
 		JobRunID: run.ID().String(),
 		Attempts: run.Attempts(),
@@ -173,9 +173,9 @@ func (w *Worker) persistStatus(ctx context.Context, run *JobRun) error {
 	return nil
 }
 
-func (w *Worker) appendEvent(ctx context.Context, runID shared.JobRunID, status Status) {
-	if err := w.repo.AppendEvent(ctx, NewRunEvent(runID, status)); err != nil {
-		w.log.Error("worker append event", zap.String("job_run_id", runID.String()), zap.String("status", string(status)), zap.Error(err))
+func (w *Worker) appendEvent(ctx context.Context, run *JobRun, status Status) {
+	if err := w.repo.AppendEvent(ctx, NewRunEvent(run.TenantID(), run.JobID(), run.ID(), status)); err != nil {
+		w.log.Error("worker append event", zap.String("job_run_id", run.ID().String()), zap.String("status", string(status)), zap.Error(err))
 	}
 }
 

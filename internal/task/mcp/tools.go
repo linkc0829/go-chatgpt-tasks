@@ -11,10 +11,10 @@ import (
 )
 
 type ToolService interface {
-	Create(ctx context.Context, in taskdomain.CreateInput) (*taskdomain.JobRun, error)
-	List(ctx context.Context, p shared.Pagination) ([]*taskdomain.JobRun, int64, error)
-	Status(ctx context.Context, id shared.JobRunID) (*taskdomain.JobRun, error)
-	Cancel(ctx context.Context, id shared.JobRunID) (*taskdomain.JobRun, error)
+	Create(ctx context.Context, id taskdomain.Identity, in taskdomain.CreateInput) (*taskdomain.JobRun, error)
+	List(ctx context.Context, id taskdomain.Identity, p shared.Pagination) ([]*taskdomain.JobRun, int64, error)
+	Status(ctx context.Context, id taskdomain.Identity, runID shared.JobRunID) (*taskdomain.JobRun, error)
+	Cancel(ctx context.Context, id taskdomain.Identity, runID shared.JobRunID) (*taskdomain.JobRun, error)
 }
 
 type createArgs struct {
@@ -46,7 +46,7 @@ type listResponse struct {
 	Offset int           `json:"offset"`
 }
 
-func Register(reg *Registry, svc ToolService) {
+func Register(reg *Registry, svc ToolService, ident taskdomain.Identity) {
 	reg.Register("task.create", func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var args createArgs
 		if err := decodeArgs(raw, &args); err != nil {
@@ -57,7 +57,7 @@ func Register(reg *Registry, svc ToolService) {
 			return nil, fmt.Errorf("parse scheduled_at: %w", err)
 		}
 
-		run, err := svc.Create(ctx, taskdomain.CreateInput{
+		run, err := svc.Create(ctx, ident, taskdomain.CreateInput{
 			Description: args.Description,
 			ScheduledAt: scheduledAt,
 			Interval:    time.Duration(args.RecurringIntervalSecond) * time.Second,
@@ -74,7 +74,7 @@ func Register(reg *Registry, svc ToolService) {
 			return nil, err
 		}
 		p := shared.NewPagination(args.Limit, args.Offset)
-		runs, total, err := svc.List(ctx, p)
+		runs, total, err := svc.List(ctx, ident, p)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +91,7 @@ func Register(reg *Registry, svc ToolService) {
 		if err != nil {
 			return nil, err
 		}
-		run, err := svc.Status(ctx, id)
+		run, err := svc.Status(ctx, ident, id)
 		if err != nil {
 			return nil, err
 		}
@@ -103,7 +103,7 @@ func Register(reg *Registry, svc ToolService) {
 		if err != nil {
 			return nil, err
 		}
-		run, err := svc.Cancel(ctx, id)
+		run, err := svc.Cancel(ctx, ident, id)
 		if err != nil {
 			return nil, err
 		}

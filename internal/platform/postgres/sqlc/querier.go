@@ -11,10 +11,10 @@ import (
 )
 
 type Querier interface {
-	CountJobRuns(ctx context.Context) (int64, error)
-	FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]JobRun, error)
-	GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error)
-	GetJobRunByID(ctx context.Context, id pgtype.UUID) (JobRun, error)
+	CountJobRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]FindDueJobRunsRow, error)
+	GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error)
+	GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunByIDRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	InsertJob(ctx context.Context, arg InsertJobParams) error
@@ -22,7 +22,7 @@ type Querier interface {
 	InsertJobRunIfAbsent(ctx context.Context, arg InsertJobRunIfAbsentParams) (int64, error)
 	InsertRunEvent(ctx context.Context, arg InsertRunEventParams) error
 	InsertUser(ctx context.Context, arg InsertUserParams) error
-	ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]JobRun, error)
+	ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]ListJobRunsRow, error)
 	ListTerminalRecurringRuns(ctx context.Context, arg ListTerminalRecurringRunsParams) ([]ListTerminalRecurringRunsRow, error)
 	UpdateJobRunStatus(ctx context.Context, arg UpdateJobRunStatusParams) (int64, error)
 	UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) error

@@ -25,11 +25,13 @@ import (
 // ----------------------------------------------------------------------------
 
 type UserID uuid.UUID
+type TenantID uuid.UUID
 type JobID uuid.UUID
 type JobRunID uuid.UUID
 type RunEventID uuid.UUID
 
 func NewUserID() UserID     { return UserID(newUUIDV7()) }
+func NewTenantID() TenantID { return TenantID(newUUIDV7()) }
 func NewJobID() JobID       { return JobID(newUUIDV7()) }
 func NewJobRunID() JobRunID { return JobRunID(newUUIDV7()) }
 func NewRunEventID() RunEventID {
@@ -41,6 +43,7 @@ func newUUIDV7() uuid.UUID {
 }
 
 func (id UserID) String() string   { return uuid.UUID(id).String() }
+func (id TenantID) String() string { return uuid.UUID(id).String() }
 func (id JobID) String() string    { return uuid.UUID(id).String() }
 func (id JobRunID) String() string { return uuid.UUID(id).String() }
 func (id RunEventID) String() string {
@@ -48,6 +51,7 @@ func (id RunEventID) String() string {
 }
 
 func (id UserID) IsZero() bool   { return uuid.UUID(id) == uuid.Nil }
+func (id TenantID) IsZero() bool { return uuid.UUID(id) == uuid.Nil }
 func (id JobID) IsZero() bool    { return uuid.UUID(id) == uuid.Nil }
 func (id JobRunID) IsZero() bool { return uuid.UUID(id) == uuid.Nil }
 func (id RunEventID) IsZero() bool {
@@ -57,6 +61,7 @@ func (id RunEventID) IsZero() bool {
 // ---------- JSON / text ----------
 
 func (id UserID) MarshalText() ([]byte, error)   { return uuid.UUID(id).MarshalText() }
+func (id TenantID) MarshalText() ([]byte, error) { return uuid.UUID(id).MarshalText() }
 func (id JobID) MarshalText() ([]byte, error)    { return uuid.UUID(id).MarshalText() }
 func (id JobRunID) MarshalText() ([]byte, error) { return uuid.UUID(id).MarshalText() }
 func (id RunEventID) MarshalText() ([]byte, error) {
@@ -69,6 +74,15 @@ func (id *UserID) UnmarshalText(b []byte) error {
 		return err
 	}
 	*id = UserID(u)
+	return nil
+}
+
+func (id *TenantID) UnmarshalText(b []byte) error {
+	u, err := uuid.ParseBytes(b)
+	if err != nil {
+		return err
+	}
+	*id = TenantID(u)
 	return nil
 }
 
@@ -102,6 +116,7 @@ func (id *RunEventID) UnmarshalText(b []byte) error {
 // ---------- database/sql round-tripping ----------
 
 func (id UserID) Value() (driver.Value, error)   { return uuid.UUID(id).Value() }
+func (id TenantID) Value() (driver.Value, error) { return uuid.UUID(id).Value() }
 func (id JobID) Value() (driver.Value, error)    { return uuid.UUID(id).Value() }
 func (id JobRunID) Value() (driver.Value, error) { return uuid.UUID(id).Value() }
 func (id RunEventID) Value() (driver.Value, error) {
@@ -114,6 +129,15 @@ func (id *UserID) Scan(src any) error {
 		return fmt.Errorf("scan UserID: %w", err)
 	}
 	*id = UserID(u)
+	return nil
+}
+
+func (id *TenantID) Scan(src any) error {
+	var u uuid.UUID
+	if err := u.Scan(src); err != nil {
+		return fmt.Errorf("scan TenantID: %w", err)
+	}
+	*id = TenantID(u)
 	return nil
 }
 
@@ -154,6 +178,14 @@ func ParseUserID(s string) (UserID, error) {
 		return UserID{}, ErrInvalidID
 	}
 	return UserID(u), nil
+}
+
+func ParseTenantID(s string) (TenantID, error) {
+	u, err := uuid.Parse(s)
+	if err != nil {
+		return TenantID{}, ErrInvalidID
+	}
+	return TenantID(u), nil
 }
 
 func ParseJobID(s string) (JobID, error) {

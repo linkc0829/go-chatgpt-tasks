@@ -28,7 +28,7 @@ func (r *workerRepo) FindRunByID(context.Context, shared.JobRunID) (*JobRun, err
 	}
 	return r.run, nil
 }
-func (r *workerRepo) ListRuns(context.Context, shared.Pagination) ([]*JobRun, int64, error) {
+func (r *workerRepo) ListRuns(context.Context, shared.TenantID, shared.Pagination) ([]*JobRun, int64, error) {
 	return nil, 0, nil
 }
 func (r *workerRepo) AppendEvent(_ context.Context, e *RunEvent) error {
@@ -187,7 +187,7 @@ func TestWorker_processTerminalRunAcksWithoutExecute(t *testing.T) {
 func newQueuedWorkerRun(t *testing.T) *JobRun {
 	t.Helper()
 
-	run, err := NewJobRun(shared.NewJobID(), 1, time.Now().UTC().Add(-time.Minute))
+	run, err := NewJobRun(shared.NewTenantID(), shared.NewJobID(), 1, time.Now().UTC().Add(-time.Minute))
 	if err != nil {
 		t.Fatalf("NewJobRun() error = %v, want nil", err)
 	}
