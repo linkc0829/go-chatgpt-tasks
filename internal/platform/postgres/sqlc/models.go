@@ -20,25 +20,32 @@ type Job struct {
 }
 
 type JobRun struct {
-	ID          pgtype.UUID
-	JobID       pgtype.UUID
-	Sequence    int32
-	Status      string
-	ScheduledAt pgtype.Timestamptz
-	TimeBucket  int64
-	Attempts    int32
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
-	TenantID    pgtype.UUID
+	ID           pgtype.UUID
+	JobID        pgtype.UUID
+	Sequence     int32
+	Status       string
+	ScheduledAt  pgtype.Timestamptz
+	TimeBucket   int64
+	Attempts     int32
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	TenantID     pgtype.UUID
+	ErrorCode    *string
+	ErrorMessage *string
+	StartedAt    pgtype.Timestamptz
+	CompletedAt  pgtype.Timestamptz
+	FailedAt     pgtype.Timestamptz
 }
 
 type RunEvent struct {
-	ID        pgtype.UUID
-	JobRunID  pgtype.UUID
-	Status    string
-	CreatedAt pgtype.Timestamptz
-	TenantID  pgtype.UUID
-	JobID     pgtype.UUID
+	ID           pgtype.UUID
+	JobRunID     pgtype.UUID
+	Status       string
+	CreatedAt    pgtype.Timestamptz
+	TenantID     pgtype.UUID
+	JobID        pgtype.UUID
+	EventType    string
+	EventPayload []byte
 }
 
 type User struct {

@@ -14,6 +14,8 @@ type Repo interface {
 	UpdateRunStatus(ctx context.Context, r *JobRun) error
 	FindRunByID(ctx context.Context, id shared.JobRunID) (*JobRun, error)
 	ListRuns(ctx context.Context, tenantID shared.TenantID, p shared.Pagination) ([]*JobRun, int64, error)
+	ListRunsByJob(ctx context.Context, tenantID shared.TenantID, jobID shared.JobID, p shared.Pagination) ([]*JobRun, int64, error)
+	ListEvents(ctx context.Context, tenantID shared.TenantID, runID shared.JobRunID) ([]*RunEvent, error)
 	AppendEvent(ctx context.Context, e *RunEvent) error
 	FindDueRuns(ctx context.Context, bucket int64, before time.Time, limit int32) ([]*JobRun, error)
 	FindJob(ctx context.Context, id shared.JobID) (*Job, error)

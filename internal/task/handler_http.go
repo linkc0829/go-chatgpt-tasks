@@ -18,6 +18,8 @@ type service interface {
 	List(ctx context.Context, id Identity, p shared.Pagination) ([]*JobRun, int64, error)
 	Status(ctx context.Context, id Identity, runID shared.JobRunID) (*JobRun, error)
 	Cancel(ctx context.Context, id Identity, runID shared.JobRunID) (*JobRun, error)
+	RunsForJob(ctx context.Context, id Identity, jobID shared.JobID, p shared.Pagination) ([]*JobRun, int64, error)
+	EventsForRun(ctx context.Context, id Identity, runID shared.JobRunID) ([]*RunEvent, error)
 }
 
 type Handler struct {
@@ -111,6 +113,54 @@ func (h *Handler) cancel(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, runToHTTPResponse(run))
+}
+
+func (h *Handler) runsForJob(c *gin.Context) {
+	id, ok := h.identity(c)
+	if !ok {
+		return
+	}
+	jobID, err := shared.ParseJobID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	p := shared.NewPagination(parseInt(c.Query("limit")), parseInt(c.Query("offset")))
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	runs, total, err := h.svc.RunsForJob(ctx, id, jobID, p)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	out := make([]RunResponse, 0, len(runs))
+	for _, run := range runs {
+		out = append(out, runToHTTPResponse(run))
+	}
+	c.JSON(http.StatusOK, ListRunsResponse{Runs: out, Total: total, Limit: p.Limit, Offset: p.Offset})
+}
+
+func (h *Handler) eventsForRun(c *gin.Context) {
+	id, runID, ok := h.runID(c)
+	if !ok {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	events, err := h.svc.EventsForRun(ctx, id, runID)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	out := make([]RunEventResponse, 0, len(events))
+	for _, event := range events {
+		out = append(out, eventToHTTPResponse(event))
+	}
+	c.JSON(http.StatusOK, ListEventsResponse{Events: out})
 }
 
 func (h *Handler) runID(c *gin.Context) (Identity, shared.JobRunID, bool) {

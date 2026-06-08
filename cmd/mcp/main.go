@@ -119,6 +119,16 @@ func bindRegistry(s *sdkmcp.Server, reg *taskmcp.Registry) {
 		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskRunRefInput) (*sdkmcp.CallToolResult, map[string]any, error) {
 			return callRegistryTool(ctx, handlers["task.cancel"], in)
 		})
+
+	sdkmcp.AddTool(s, &sdkmcp.Tool{Name: "task.runs", Description: "List runs for a scheduled task."},
+		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskRunsInput) (*sdkmcp.CallToolResult, map[string]any, error) {
+			return callRegistryTool(ctx, handlers["task.runs"], in)
+		})
+
+	sdkmcp.AddTool(s, &sdkmcp.Tool{Name: "task.events", Description: "List lifecycle events for a task run."},
+		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskRunRefInput) (*sdkmcp.CallToolResult, map[string]any, error) {
+			return callRegistryTool(ctx, handlers["task.events"], in)
+		})
 }
 
 type taskCreateInput struct {
@@ -134,6 +144,12 @@ type taskListInput struct {
 
 type taskRunRefInput struct {
 	JobID string `json:"job_id" jsonschema:"Job run ID returned by task.create or task.list"`
+}
+
+type taskRunsInput struct {
+	JobID  string `json:"job_id" jsonschema:"Job ID returned as job_id by task.create or task.list"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Page size, default 20"`
+	Offset int    `json:"offset,omitempty" jsonschema:"Page offset, default 0"`
 }
 
 func callRegistryTool(

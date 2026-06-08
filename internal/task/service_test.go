@@ -65,6 +65,17 @@ func (f *fakeRepo) ListRuns(_ context.Context, _ shared.TenantID, _ shared.Pagin
 	return f.listRuns, f.listTotal, f.listErr
 }
 
+func (f *fakeRepo) ListRunsByJob(_ context.Context, _ shared.TenantID, _ shared.JobID, _ shared.Pagination) ([]*JobRun, int64, error) {
+	return f.listRuns, f.listTotal, f.listErr
+}
+
+func (f *fakeRepo) ListEvents(_ context.Context, _ shared.TenantID, _ shared.JobRunID) ([]*RunEvent, error) {
+	if f.lastAppendedEvent == nil {
+		return nil, nil
+	}
+	return []*RunEvent{f.lastAppendedEvent}, nil
+}
+
 func (f *fakeRepo) AppendEvent(_ context.Context, e *RunEvent) error {
 	f.appendEventCalls++
 	f.lastAppendedEvent = e
@@ -183,6 +194,7 @@ func TestService_Cancel(t *testing.T) {
 		assert.Equal(t, 1, repo.updateRunCalls)
 		assert.Equal(t, 1, repo.appendEventCalls)
 		assert.Equal(t, StatusCancelled, repo.lastAppendedEvent.Status())
+		assert.Equal(t, EventJobCancelled, repo.lastAppendedEvent.EventType())
 	})
 
 	t.Run("cancel_terminal_rejected", func(t *testing.T) {

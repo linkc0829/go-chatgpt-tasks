@@ -29,6 +29,12 @@ func (r *recurringWatcherRepo) FindRunByID(context.Context, shared.JobRunID) (*J
 func (r *recurringWatcherRepo) ListRuns(context.Context, shared.TenantID, shared.Pagination) ([]*JobRun, int64, error) {
 	return nil, 0, nil
 }
+func (r *recurringWatcherRepo) ListRunsByJob(context.Context, shared.TenantID, shared.JobID, shared.Pagination) ([]*JobRun, int64, error) {
+	return nil, 0, nil
+}
+func (r *recurringWatcherRepo) ListEvents(context.Context, shared.TenantID, shared.JobRunID) ([]*RunEvent, error) {
+	return nil, nil
+}
 func (r *recurringWatcherRepo) AppendEvent(context.Context, *RunEvent) error { return nil }
 func (r *recurringWatcherRepo) FindDueRuns(context.Context, int64, time.Time, int32) ([]*JobRun, error) {
 	return nil, nil

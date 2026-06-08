@@ -126,6 +126,21 @@ func (mr *MockRepoMockRecorder) InsertRunIfAbsent(ctx, r interface{}) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertRunIfAbsent", reflect.TypeOf((*MockRepo)(nil).InsertRunIfAbsent), ctx, r)
 }
 
+// ListEvents mocks base method.
+func (m *MockRepo) ListEvents(ctx context.Context, tenantID shared.TenantID, runID shared.JobRunID) ([]*task.RunEvent, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListEvents", ctx, tenantID, runID)
+	ret0, _ := ret[0].([]*task.RunEvent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListEvents indicates an expected call of ListEvents.
+func (mr *MockRepoMockRecorder) ListEvents(ctx, tenantID, runID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListEvents", reflect.TypeOf((*MockRepo)(nil).ListEvents), ctx, tenantID, runID)
+}
+
 // ListRuns mocks base method.
 func (m *MockRepo) ListRuns(ctx context.Context, tenantID shared.TenantID, p shared.Pagination) ([]*task.JobRun, int64, error) {
 	m.ctrl.T.Helper()
@@ -140,6 +155,22 @@ func (m *MockRepo) ListRuns(ctx context.Context, tenantID shared.TenantID, p sha
 func (mr *MockRepoMockRecorder) ListRuns(ctx, tenantID, p interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRuns", reflect.TypeOf((*MockRepo)(nil).ListRuns), ctx, tenantID, p)
+}
+
+// ListRunsByJob mocks base method.
+func (m *MockRepo) ListRunsByJob(ctx context.Context, tenantID shared.TenantID, jobID shared.JobID, p shared.Pagination) ([]*task.JobRun, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRunsByJob", ctx, tenantID, jobID, p)
+	ret0, _ := ret[0].([]*task.JobRun)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListRunsByJob indicates an expected call of ListRunsByJob.
+func (mr *MockRepoMockRecorder) ListRunsByJob(ctx, tenantID, jobID, p interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRunsByJob", reflect.TypeOf((*MockRepo)(nil).ListRunsByJob), ctx, tenantID, jobID, p)
 }
 
 // SaveJob mocks base method.

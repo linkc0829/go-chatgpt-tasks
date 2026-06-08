@@ -104,6 +104,37 @@ func (s *Service) Cancel(ctx context.Context, id Identity, runID shared.JobRunID
 	if err := s.repo.UpdateRunStatus(ctx, run); err != nil {
 		return nil, fmt.Errorf("update run: %w", err)
 	}
-	_ = s.repo.AppendEvent(ctx, NewRunEvent(run.TenantID(), run.JobID(), run.ID(), StatusCancelled))
+	_ = s.repo.AppendEvent(ctx, NewRunEvent(run.TenantID(), run.JobID(), run.ID(), StatusCancelled, EventJobCancelled, nil))
 	return run, nil
+}
+
+func (s *Service) RunsForJob(ctx context.Context, id Identity, jobID shared.JobID, p shared.Pagination) ([]*JobRun, int64, error) {
+	if !id.valid() {
+		return nil, 0, ErrInvalidOwner
+	}
+
+	runs, total, err := s.repo.ListRunsByJob(ctx, id.TenantID, jobID, p)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list runs for job: %w", err)
+	}
+	return runs, total, nil
+}
+
+func (s *Service) EventsForRun(ctx context.Context, id Identity, runID shared.JobRunID) ([]*RunEvent, error) {
+	if !id.valid() {
+		return nil, ErrInvalidOwner
+	}
+
+	run, err := s.repo.FindRunByID(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if run.TenantID() != id.TenantID {
+		return nil, ErrJobRunNotFound
+	}
+	events, err := s.repo.ListEvents(ctx, id.TenantID, runID)
+	if err != nil {
+		return nil, fmt.Errorf("list events: %w", err)
+	}
+	return events, nil
 }

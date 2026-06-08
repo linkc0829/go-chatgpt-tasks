@@ -127,6 +127,27 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/jobs/{id}/runs:
+    get:
+      tags: [jobs]
+      summary: List runs for a scheduled job
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListRunsResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/jobs/{id}/cancel:
     post:
       tags: [jobs]
@@ -140,6 +161,21 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RunResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/runs/{id}/events:
+    get:
+      tags: [jobs]
+      summary: List lifecycle events for a job run
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListEventsResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -228,6 +264,11 @@ components:
         scheduled_at: { type: string, format: date-time }
         sequence: { type: integer }
         attempts: { type: integer }
+        error_code: { type: string }
+        error_message: { type: string }
+        started_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        failed_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -240,3 +281,22 @@ components:
         total: { type: integer }
         limit: { type: integer }
         offset: { type: integer }
+
+    RunEventResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        job_id: { type: string, format: uuid }
+        job_run_id: { type: string, format: uuid }
+        status: { type: string }
+        event_type: { type: string }
+        payload: { type: object }
+        created_at: { type: string, format: date-time }
+
+    ListEventsResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/RunEventResponse" }

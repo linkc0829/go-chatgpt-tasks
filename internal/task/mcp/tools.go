@@ -15,6 +15,8 @@ type ToolService interface {
 	List(ctx context.Context, id taskdomain.Identity, p shared.Pagination) ([]*taskdomain.JobRun, int64, error)
 	Status(ctx context.Context, id taskdomain.Identity, runID shared.JobRunID) (*taskdomain.JobRun, error)
 	Cancel(ctx context.Context, id taskdomain.Identity, runID shared.JobRunID) (*taskdomain.JobRun, error)
+	RunsForJob(ctx context.Context, id taskdomain.Identity, jobID shared.JobID, p shared.Pagination) ([]*taskdomain.JobRun, int64, error)
+	EventsForRun(ctx context.Context, id taskdomain.Identity, runID shared.JobRunID) ([]*taskdomain.RunEvent, error)
 }
 
 type createArgs struct {
@@ -32,6 +34,12 @@ type runRef struct {
 	JobID string `json:"job_id"`
 }
 
+type jobRef struct {
+	JobID  string `json:"job_id"`
+	Limit  int    `json:"limit,omitempty"`
+	Offset int    `json:"offset,omitempty"`
+}
+
 type runResponse struct {
 	JobID       string `json:"job_id"`
 	Status      string `json:"status"`
@@ -44,6 +52,19 @@ type listResponse struct {
 	Total  int64         `json:"total"`
 	Limit  int           `json:"limit"`
 	Offset int           `json:"offset"`
+}
+
+type eventResponse struct {
+	JobID     string         `json:"job_id"`
+	JobRunID  string         `json:"job_run_id"`
+	Status    string         `json:"status"`
+	EventType string         `json:"event_type"`
+	Payload   map[string]any `json:"payload"`
+	CreatedAt string         `json:"created_at"`
+}
+
+type eventsResponse struct {
+	Events []eventResponse `json:"events"`
 }
 
 func Register(reg *Registry, svc ToolService, ident taskdomain.Identity) {
@@ -109,6 +130,43 @@ func Register(reg *Registry, svc ToolService, ident taskdomain.Identity) {
 		}
 		return runToResponse(run), nil
 	})
+
+	reg.Register("task.runs", func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var ref jobRef
+		if err := decodeArgs(raw, &ref); err != nil {
+			return nil, err
+		}
+		jobID, err := shared.ParseJobID(ref.JobID)
+		if err != nil {
+			return nil, fmt.Errorf("parse job_id: %w", err)
+		}
+		p := shared.NewPagination(ref.Limit, ref.Offset)
+		runs, total, err := svc.RunsForJob(ctx, ident, jobID, p)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]runResponse, 0, len(runs))
+		for _, run := range runs {
+			out = append(out, runToResponse(run))
+		}
+		return listResponse{Runs: out, Total: total, Limit: p.Limit, Offset: p.Offset}, nil
+	})
+
+	reg.Register("task.events", func(ctx context.Context, raw json.RawMessage) (any, error) {
+		id, err := runIDFromArgs(raw)
+		if err != nil {
+			return nil, err
+		}
+		events, err := svc.EventsForRun(ctx, ident, id)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]eventResponse, 0, len(events))
+		for _, event := range events {
+			out = append(out, eventToResponse(event))
+		}
+		return eventsResponse{Events: out}, nil
+	})
 }
 
 func decodeArgs(raw json.RawMessage, v any) error {
@@ -139,5 +197,16 @@ func runToResponse(run *taskdomain.JobRun) runResponse {
 		Status:      string(run.Status()),
 		ScheduledAt: run.ScheduledAt().Format(time.RFC3339),
 		Sequence:    run.Sequence(),
+	}
+}
+
+func eventToResponse(event *taskdomain.RunEvent) eventResponse {
+	return eventResponse{
+		JobID:     event.JobID().String(),
+		JobRunID:  event.JobRunID().String(),
+		Status:    string(event.Status()),
+		EventType: string(event.EventType()),
+		Payload:   event.Payload(),
+		CreatedAt: event.CreatedAt().Format(time.RFC3339),
 	}
 }

@@ -27,6 +27,19 @@ const (
 	StatusCancelled Status = "cancelled"
 )
 
+type EventType string
+
+const (
+	EventJobRunCreated   EventType = "job_run.created"
+	EventJobRunEnqueued  EventType = "job_run.enqueued"
+	EventJobRunStarted   EventType = "job_run.started"
+	EventJobRunSucceeded EventType = "job_run.succeeded"
+	EventJobRunFailed    EventType = "job_run.failed"
+	EventJobRunRetry     EventType = "job_run.retry_scheduled"
+	EventJobRunDLQ       EventType = "job_run.dlq"
+	EventJobCancelled    EventType = "job.cancelled"
+)
+
 type Job struct {
 	id          shared.JobID
 	tenantID    shared.TenantID
@@ -47,6 +60,11 @@ type JobRun struct {
 	scheduledAt time.Time
 	timeBucket  int64
 	attempts    int
+	errorCode   string
+	errorMsg    string
+	startedAt   time.Time
+	completedAt time.Time
+	failedAt    time.Time
 	createdAt   time.Time
 	updatedAt   time.Time
 }
@@ -57,6 +75,8 @@ type RunEvent struct {
 	jobID     shared.JobID
 	jobRunID  shared.JobRunID
 	status    Status
+	eventType EventType
+	payload   map[string]any
 	createdAt time.Time
 }
 
@@ -132,15 +152,35 @@ func NewJobRun(tenantID shared.TenantID, jobID shared.JobID, sequence int, sched
 	}, nil
 }
 
-func NewRunEvent(tenantID shared.TenantID, jobID shared.JobID, runID shared.JobRunID, s Status) *RunEvent {
+func NewRunEvent(
+	tenantID shared.TenantID,
+	jobID shared.JobID,
+	runID shared.JobRunID,
+	s Status,
+	eventType EventType,
+	payload map[string]any,
+) *RunEvent {
 	return &RunEvent{
 		id:        shared.NewRunEventID(),
 		tenantID:  tenantID,
 		jobID:     jobID,
 		jobRunID:  runID,
 		status:    s,
+		eventType: eventType,
+		payload:   clonePayload(payload),
 		createdAt: time.Now().UTC(),
 	}
+}
+
+func clonePayload(payload map[string]any) map[string]any {
+	if payload == nil {
+		return nil
+	}
+	out := make(map[string]any, len(payload))
+	for k, v := range payload {
+		out[k] = v
+	}
+	return out
 }
 
 func rehydrateJob(
@@ -174,6 +214,11 @@ func rehydrateJobRun(
 	scheduledAt time.Time,
 	timeBucket int64,
 	attempts int,
+	errorCode string,
+	errorMsg string,
+	startedAt time.Time,
+	completedAt time.Time,
+	failedAt time.Time,
 	createdAt time.Time,
 	updatedAt time.Time,
 ) *JobRun {
@@ -186,6 +231,11 @@ func rehydrateJobRun(
 		scheduledAt: scheduledAt,
 		timeBucket:  timeBucket,
 		attempts:    attempts,
+		errorCode:   errorCode,
+		errorMsg:    errorMsg,
+		startedAt:   startedAt,
+		completedAt: completedAt,
+		failedAt:    failedAt,
 		createdAt:   createdAt,
 		updatedAt:   updatedAt,
 	}
@@ -205,7 +255,9 @@ func (r *JobRun) MarkRunning() error {
 		return ErrInvalidStatusTransition
 	}
 	r.status = StatusRunning
-	r.updatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	r.startedAt = now
+	r.updatedAt = now
 	return nil
 }
 
@@ -214,7 +266,9 @@ func (r *JobRun) MarkSuccess() error {
 		return ErrInvalidStatusTransition
 	}
 	r.status = StatusSuccess
-	r.updatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	r.completedAt = now
+	r.updatedAt = now
 	return nil
 }
 
@@ -224,7 +278,9 @@ func (r *JobRun) MarkRetry() error {
 	}
 	r.status = StatusRetry
 	r.attempts++
-	r.updatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	r.failedAt = now
+	r.updatedAt = now
 	return nil
 }
 
@@ -233,7 +289,9 @@ func (r *JobRun) MarkFailed() error {
 		return ErrInvalidStatusTransition
 	}
 	r.status = StatusFailed
-	r.updatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	r.failedAt = now
+	r.updatedAt = now
 	return nil
 }
 
@@ -242,8 +300,15 @@ func (r *JobRun) Cancel() error {
 		return ErrInvalidStatusTransition
 	}
 	r.status = StatusCancelled
-	r.updatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	r.completedAt = now
+	r.updatedAt = now
 	return nil
+}
+
+func (r *JobRun) setError(code, msg string) {
+	r.errorCode = code
+	r.errorMsg = msg
 }
 
 func (r *JobRun) IsTerminal() bool {
@@ -268,6 +333,11 @@ func (r *JobRun) Status() Status         { return r.status }
 func (r *JobRun) ScheduledAt() time.Time { return r.scheduledAt }
 func (r *JobRun) TimeBucket() int64      { return r.timeBucket }
 func (r *JobRun) Attempts() int          { return r.attempts }
+func (r *JobRun) ErrorCode() string      { return r.errorCode }
+func (r *JobRun) ErrorMessage() string   { return r.errorMsg }
+func (r *JobRun) StartedAt() time.Time   { return r.startedAt }
+func (r *JobRun) CompletedAt() time.Time { return r.completedAt }
+func (r *JobRun) FailedAt() time.Time    { return r.failedAt }
 func (r *JobRun) CreatedAt() time.Time   { return r.createdAt }
 func (r *JobRun) UpdatedAt() time.Time   { return r.updatedAt }
 func (e *RunEvent) ID() shared.RunEventID {
@@ -277,4 +347,6 @@ func (e *RunEvent) TenantID() shared.TenantID { return e.tenantID }
 func (e *RunEvent) JobID() shared.JobID       { return e.jobID }
 func (e *RunEvent) JobRunID() shared.JobRunID { return e.jobRunID }
 func (e *RunEvent) Status() Status            { return e.status }
+func (e *RunEvent) EventType() EventType      { return e.eventType }
+func (e *RunEvent) Payload() map[string]any   { return clonePayload(e.payload) }
 func (e *RunEvent) CreatedAt() time.Time      { return e.createdAt }

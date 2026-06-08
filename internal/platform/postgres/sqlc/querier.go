@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	CountJobRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountJobRunsByJob(ctx context.Context, arg CountJobRunsByJobParams) (int64, error)
 	FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]FindDueJobRunsRow, error)
 	GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error)
 	GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunByIDRow, error)
@@ -23,6 +24,8 @@ type Querier interface {
 	InsertRunEvent(ctx context.Context, arg InsertRunEventParams) error
 	InsertUser(ctx context.Context, arg InsertUserParams) error
 	ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]ListJobRunsRow, error)
+	ListJobRunsByJob(ctx context.Context, arg ListJobRunsByJobParams) ([]ListJobRunsByJobRow, error)
+	ListRunEventsByRun(ctx context.Context, arg ListRunEventsByRunParams) ([]ListRunEventsByRunRow, error)
 	ListTerminalRecurringRuns(ctx context.Context, arg ListTerminalRecurringRunsParams) ([]ListTerminalRecurringRunsRow, error)
 	UpdateJobRunStatus(ctx context.Context, arg UpdateJobRunStatusParams) (int64, error)
 	UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) error

@@ -1,9 +1,12 @@
 package task
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres/sqlc"
@@ -46,6 +49,11 @@ func jobRunFromGetByIDRow(r sqlc.GetJobRunByIDRow) *JobRun {
 		postgres.PgToTime(r.ScheduledAt),
 		r.TimeBucket,
 		int(r.Attempts),
+		stringValue(r.ErrorCode),
+		stringValue(r.ErrorMessage),
+		postgres.PgToTime(r.StartedAt),
+		postgres.PgToTime(r.CompletedAt),
+		postgres.PgToTime(r.FailedAt),
 		postgres.PgToTime(r.CreatedAt),
 		postgres.PgToTime(r.UpdatedAt),
 	)
@@ -61,6 +69,11 @@ func jobRunFromListRow(r sqlc.ListJobRunsRow) *JobRun {
 		postgres.PgToTime(r.ScheduledAt),
 		r.TimeBucket,
 		int(r.Attempts),
+		stringValue(r.ErrorCode),
+		stringValue(r.ErrorMessage),
+		postgres.PgToTime(r.StartedAt),
+		postgres.PgToTime(r.CompletedAt),
+		postgres.PgToTime(r.FailedAt),
 		postgres.PgToTime(r.CreatedAt),
 		postgres.PgToTime(r.UpdatedAt),
 	)
@@ -76,6 +89,31 @@ func jobRunFromDueRow(r sqlc.FindDueJobRunsRow) *JobRun {
 		postgres.PgToTime(r.ScheduledAt),
 		r.TimeBucket,
 		int(r.Attempts),
+		stringValue(r.ErrorCode),
+		stringValue(r.ErrorMessage),
+		postgres.PgToTime(r.StartedAt),
+		postgres.PgToTime(r.CompletedAt),
+		postgres.PgToTime(r.FailedAt),
+		postgres.PgToTime(r.CreatedAt),
+		postgres.PgToTime(r.UpdatedAt),
+	)
+}
+
+func jobRunFromJobRow(r sqlc.ListJobRunsByJobRow) *JobRun {
+	return rehydrateJobRun(
+		shared.JobRunID(postgres.PgToUUID(r.ID)),
+		shared.TenantID(postgres.PgToUUID(r.TenantID)),
+		shared.JobID(postgres.PgToUUID(r.JobID)),
+		int(r.Sequence),
+		Status(r.Status),
+		postgres.PgToTime(r.ScheduledAt),
+		r.TimeBucket,
+		int(r.Attempts),
+		stringValue(r.ErrorCode),
+		stringValue(r.ErrorMessage),
+		postgres.PgToTime(r.StartedAt),
+		postgres.PgToTime(r.CompletedAt),
+		postgres.PgToTime(r.FailedAt),
 		postgres.PgToTime(r.CreatedAt),
 		postgres.PgToTime(r.UpdatedAt),
 	)
@@ -83,25 +121,35 @@ func jobRunFromDueRow(r sqlc.FindDueJobRunsRow) *JobRun {
 
 func jobRunToInsertParams(r *JobRun) sqlc.InsertJobRunParams {
 	return sqlc.InsertJobRunParams{
-		ID:          postgres.UUIDToPg(uuid.UUID(r.ID())),
-		TenantID:    postgres.UUIDToPg(uuid.UUID(r.TenantID())),
-		JobID:       postgres.UUIDToPg(uuid.UUID(r.JobID())),
-		Sequence:    int32(r.Sequence()), //nolint:gosec // domain validation keeps sequence positive and bounded by DB int use.
-		Status:      string(r.Status()),
-		ScheduledAt: postgres.TimeToPg(r.ScheduledAt()),
-		TimeBucket:  r.TimeBucket(),
-		Attempts:    int32(r.Attempts()), //nolint:gosec // attempts is controlled by domain transitions and DB int use.
-		CreatedAt:   postgres.TimeToPg(r.CreatedAt()),
-		UpdatedAt:   postgres.TimeToPg(r.UpdatedAt()),
+		ID:           postgres.UUIDToPg(uuid.UUID(r.ID())),
+		TenantID:     postgres.UUIDToPg(uuid.UUID(r.TenantID())),
+		JobID:        postgres.UUIDToPg(uuid.UUID(r.JobID())),
+		Sequence:     int32(r.Sequence()), //nolint:gosec // domain validation keeps sequence positive and bounded by DB int use.
+		Status:       string(r.Status()),
+		ScheduledAt:  postgres.TimeToPg(r.ScheduledAt()),
+		TimeBucket:   r.TimeBucket(),
+		Attempts:     int32(r.Attempts()), //nolint:gosec // attempts is controlled by domain transitions and DB int use.
+		ErrorCode:    stringPtr(r.ErrorCode()),
+		ErrorMessage: stringPtr(r.ErrorMessage()),
+		StartedAt:    nullableTimeToPg(r.StartedAt()),
+		CompletedAt:  nullableTimeToPg(r.CompletedAt()),
+		FailedAt:     nullableTimeToPg(r.FailedAt()),
+		CreatedAt:    postgres.TimeToPg(r.CreatedAt()),
+		UpdatedAt:    postgres.TimeToPg(r.UpdatedAt()),
 	}
 }
 
 func jobRunToUpdateStatusParams(r *JobRun) sqlc.UpdateJobRunStatusParams {
 	return sqlc.UpdateJobRunStatusParams{
-		ID:        postgres.UUIDToPg(uuid.UUID(r.ID())),
-		Status:    string(r.Status()),
-		Attempts:  int32(r.Attempts()), //nolint:gosec // attempts is controlled by domain transitions and DB int use.
-		UpdatedAt: postgres.TimeToPg(r.UpdatedAt()),
+		ID:           postgres.UUIDToPg(uuid.UUID(r.ID())),
+		Status:       string(r.Status()),
+		Attempts:     int32(r.Attempts()), //nolint:gosec // attempts is controlled by domain transitions and DB int use.
+		ErrorCode:    stringPtr(r.ErrorCode()),
+		ErrorMessage: stringPtr(r.ErrorMessage()),
+		StartedAt:    nullableTimeToPg(r.StartedAt()),
+		CompletedAt:  nullableTimeToPg(r.CompletedAt()),
+		FailedAt:     nullableTimeToPg(r.FailedAt()),
+		UpdatedAt:    postgres.TimeToPg(r.UpdatedAt()),
 	}
 }
 
@@ -118,15 +166,81 @@ func jobRunToInsertIfAbsentParams(r *JobRun) sqlc.InsertJobRunIfAbsentParams {
 	}
 }
 
-func runEventToInsertParams(e *RunEvent) sqlc.InsertRunEventParams {
-	return sqlc.InsertRunEventParams{
-		ID:        postgres.UUIDToPg(uuid.UUID(e.ID())),
-		TenantID:  postgres.UUIDToPg(uuid.UUID(e.TenantID())),
-		JobID:     postgres.UUIDToPg(uuid.UUID(e.JobID())),
-		JobRunID:  postgres.UUIDToPg(uuid.UUID(e.JobRunID())),
-		Status:    string(e.Status()),
-		CreatedAt: postgres.TimeToPg(e.CreatedAt()),
+func runEventToInsertParams(e *RunEvent) (sqlc.InsertRunEventParams, error) {
+	payload, err := payloadToJSON(e.Payload())
+	if err != nil {
+		return sqlc.InsertRunEventParams{}, err
 	}
+	return sqlc.InsertRunEventParams{
+		ID:           postgres.UUIDToPg(uuid.UUID(e.ID())),
+		TenantID:     postgres.UUIDToPg(uuid.UUID(e.TenantID())),
+		JobID:        postgres.UUIDToPg(uuid.UUID(e.JobID())),
+		JobRunID:     postgres.UUIDToPg(uuid.UUID(e.JobRunID())),
+		Status:       string(e.Status()),
+		EventType:    string(e.EventType()),
+		EventPayload: payload,
+		CreatedAt:    postgres.TimeToPg(e.CreatedAt()),
+	}, nil
+}
+
+func runEventFromSqlc(r sqlc.ListRunEventsByRunRow) (*RunEvent, error) {
+	payload, err := payloadFromJSON(r.EventPayload)
+	if err != nil {
+		return nil, err
+	}
+	return &RunEvent{
+		id:        shared.RunEventID(postgres.PgToUUID(r.ID)),
+		tenantID:  shared.TenantID(postgres.PgToUUID(r.TenantID)),
+		jobID:     shared.JobID(postgres.PgToUUID(r.JobID)),
+		jobRunID:  shared.JobRunID(postgres.PgToUUID(r.JobRunID)),
+		status:    Status(r.Status),
+		eventType: EventType(r.EventType),
+		payload:   payload,
+		createdAt: postgres.PgToTime(r.CreatedAt),
+	}, nil
+}
+
+func stringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func stringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func nullableTimeToPg(t time.Time) pgtype.Timestamptz {
+	if t.IsZero() {
+		return pgtype.Timestamptz{}
+	}
+	return postgres.TimeToPg(t)
+}
+
+func payloadToJSON(payload map[string]any) ([]byte, error) {
+	if payload == nil {
+		return []byte("{}"), nil
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal event payload: %w", err)
+	}
+	return b, nil
+}
+
+func payloadFromJSON(b []byte) (map[string]any, error) {
+	if len(b) == 0 {
+		return nil, nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(b, &payload); err != nil {
+		return nil, fmt.Errorf("decode event payload: %w", err)
+	}
+	return payload, nil
 }
 
 type NextRunSpec struct {

@@ -83,11 +83,66 @@ func (r *PostgresRepo) ListRuns(ctx context.Context, tenantID shared.TenantID, p
 	return out, total, nil
 }
 
+func (r *PostgresRepo) ListRunsByJob(
+	ctx context.Context,
+	tenantID shared.TenantID,
+	jobID shared.JobID,
+	p shared.Pagination,
+) ([]*JobRun, int64, error) {
+	rows, err := r.q.ListJobRunsByJob(ctx, sqlc.ListJobRunsByJobParams{
+		TenantID:   postgres.UUIDToPg(uuid.UUID(tenantID)),
+		JobID:      postgres.UUIDToPg(uuid.UUID(jobID)),
+		PageLimit:  int32(p.Limit),  //nolint:gosec // shared pagination clamps to maxLimit=100.
+		PageOffset: int32(p.Offset), //nolint:gosec // shared pagination normalizes to non-negative API bounds.
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("list job runs by job: %w", err)
+	}
+
+	out := make([]*JobRun, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, jobRunFromJobRow(row))
+	}
+
+	total, err := r.q.CountJobRunsByJob(ctx, sqlc.CountJobRunsByJobParams{
+		TenantID: postgres.UUIDToPg(uuid.UUID(tenantID)),
+		JobID:    postgres.UUIDToPg(uuid.UUID(jobID)),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("count job runs by job: %w", err)
+	}
+	return out, total, nil
+}
+
 func (r *PostgresRepo) AppendEvent(ctx context.Context, e *RunEvent) error {
-	if err := r.q.InsertRunEvent(ctx, runEventToInsertParams(e)); err != nil {
+	params, err := runEventToInsertParams(e)
+	if err != nil {
+		return err
+	}
+	if err := r.q.InsertRunEvent(ctx, params); err != nil {
 		return fmt.Errorf("insert run event: %w", err)
 	}
 	return nil
+}
+
+func (r *PostgresRepo) ListEvents(ctx context.Context, tenantID shared.TenantID, runID shared.JobRunID) ([]*RunEvent, error) {
+	rows, err := r.q.ListRunEventsByRun(ctx, sqlc.ListRunEventsByRunParams{
+		TenantID: postgres.UUIDToPg(uuid.UUID(tenantID)),
+		JobRunID: postgres.UUIDToPg(uuid.UUID(runID)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list run events: %w", err)
+	}
+
+	out := make([]*RunEvent, 0, len(rows))
+	for _, row := range rows {
+		event, err := runEventFromSqlc(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, event)
+	}
+	return out, nil
 }
 
 func (r *PostgresRepo) FindDueRuns(

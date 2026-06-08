@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/auth"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/metrics"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/task"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/user"
@@ -26,6 +27,7 @@ func wireFeatures(
 	pool *pgxpool.Pool,
 	rdb *redis.Client,
 	authMgr *auth.Manager,
+	metricsReg *metrics.Registry,
 	lg *zap.Logger,
 ) []task.Runner {
 	api := engine.Group("/api/v1")
@@ -50,11 +52,12 @@ func wireFeatures(
 	taskQueue := task.NewRedisQueue(rdb)
 	watcher := task.NewWatcher(taskRepo, taskQueue, 5*time.Second, lg)
 	exec := task.NewStubExecutor(lg)
+	taskMetrics := task.NewMetrics(metricsReg.Prometheus())
 
 	const workerCount = 3
 	runners := []task.Runner{watcher}
 	for i := 0; i < workerCount; i++ {
-		runners = append(runners, task.NewWorker(fmt.Sprintf("worker-%d", i), taskRepo, taskQueue, exec, lg))
+		runners = append(runners, task.NewWorker(fmt.Sprintf("worker-%d", i), taskRepo, taskQueue, exec, lg, taskMetrics))
 	}
 	runners = append(runners, task.NewRecurringWatcher(taskRepo, 10*time.Second, lg))
 	return runners

@@ -31,6 +31,12 @@ func (r *watcherRepo) FindRunByID(context.Context, shared.JobRunID) (*JobRun, er
 func (r *watcherRepo) ListRuns(context.Context, shared.TenantID, shared.Pagination) ([]*JobRun, int64, error) {
 	return nil, 0, nil
 }
+func (r *watcherRepo) ListRunsByJob(context.Context, shared.TenantID, shared.JobID, shared.Pagination) ([]*JobRun, int64, error) {
+	return nil, 0, nil
+}
+func (r *watcherRepo) ListEvents(context.Context, shared.TenantID, shared.JobRunID) ([]*RunEvent, error) {
+	return nil, nil
+}
 func (r *watcherRepo) AppendEvent(context.Context, *RunEvent) error { return nil }
 func (r *watcherRepo) FindDueRuns(context.Context, int64, time.Time, int32) ([]*JobRun, error) {
 	r.findDueCalls++

@@ -13,7 +13,7 @@ import (
 type workerRepo struct {
 	run           *JobRun
 	updatedStatus []Status
-	events        []Status
+	events        []*RunEvent
 }
 
 func (r *workerRepo) SaveJob(context.Context, *Job) error    { return nil }
@@ -31,8 +31,14 @@ func (r *workerRepo) FindRunByID(context.Context, shared.JobRunID) (*JobRun, err
 func (r *workerRepo) ListRuns(context.Context, shared.TenantID, shared.Pagination) ([]*JobRun, int64, error) {
 	return nil, 0, nil
 }
+func (r *workerRepo) ListRunsByJob(context.Context, shared.TenantID, shared.JobID, shared.Pagination) ([]*JobRun, int64, error) {
+	return nil, 0, nil
+}
+func (r *workerRepo) ListEvents(context.Context, shared.TenantID, shared.JobRunID) ([]*RunEvent, error) {
+	return nil, nil
+}
 func (r *workerRepo) AppendEvent(_ context.Context, e *RunEvent) error {
-	r.events = append(r.events, e.Status())
+	r.events = append(r.events, e)
 	return nil
 }
 func (r *workerRepo) FindDueRuns(context.Context, int64, time.Time, int32) ([]*JobRun, error) {
@@ -89,7 +95,7 @@ func TestWorker_processSuccessMarksSuccessAndAcks(t *testing.T) {
 	repo := &workerRepo{run: run}
 	queue := &workerQueue{}
 	exec := &workerExecutor{}
-	worker := NewWorker("worker-test", repo, queue, exec, zap.NewNop())
+	worker := NewWorker("worker-test", repo, queue, exec, zap.NewNop(), nil)
 
 	worker.process(context.Background(), queuedMessageFor(run, "1-0"))
 
@@ -100,8 +106,9 @@ func TestWorker_processSuccessMarksSuccessAndAcks(t *testing.T) {
 	if !statusesEqual(repo.updatedStatus, wantStatuses) {
 		t.Errorf("Worker.process(success) updated statuses = %v, want %v", repo.updatedStatus, wantStatuses)
 	}
-	if !statusesEqual(repo.events, wantStatuses) {
-		t.Errorf("Worker.process(success) events = %v, want %v", repo.events, wantStatuses)
+	wantEvents := []EventType{EventJobRunStarted, EventJobRunSucceeded}
+	if !eventTypesEqual(repo.events, wantEvents) {
+		t.Errorf("Worker.process(success) event types = %v, want %v", eventTypes(repo.events), wantEvents)
 	}
 	if got, want := queue.acked, []string{"1-0"}; !stringsEqual(got, want) {
 		t.Errorf("Worker.process(success) acked = %v, want %v", got, want)
@@ -116,7 +123,7 @@ func TestWorker_processTransientFailureRetriesAndAcks(t *testing.T) {
 	repo := &workerRepo{run: run}
 	queue := &workerQueue{}
 	exec := &workerExecutor{err: errors.New("transient")}
-	worker := NewWorker("worker-test", repo, queue, exec, zap.NewNop())
+	worker := NewWorker("worker-test", repo, queue, exec, zap.NewNop(), nil)
 
 	worker.process(context.Background(), queuedMessageFor(run, "2-0"))
 
@@ -125,6 +132,12 @@ func TestWorker_processTransientFailureRetriesAndAcks(t *testing.T) {
 	}
 	if got, want := run.Attempts(), 1; got != want {
 		t.Errorf("Worker.process(transient failure) attempts = %d, want %d", got, want)
+	}
+	if got, want := run.ErrorMessage(), "transient"; got != want {
+		t.Errorf("Worker.process(transient failure) error message = %q, want %q", got, want)
+	}
+	if want := []EventType{EventJobRunStarted, EventJobRunRetry}; !eventTypesEqual(repo.events, want) {
+		t.Errorf("Worker.process(transient failure) event types = %v, want %v", eventTypes(repo.events), want)
 	}
 	if got := len(queue.enqueued); got != 1 {
 		t.Fatalf("Worker.process(transient failure) enqueued %d retries, want 1", got)
@@ -143,12 +156,18 @@ func TestWorker_processMaxFailureDeadLettersAndAcks(t *testing.T) {
 	repo := &workerRepo{run: run}
 	queue := &workerQueue{}
 	exec := &workerExecutor{err: errors.New("permanent")}
-	worker := NewWorker("worker-test", repo, queue, exec, zap.NewNop())
+	worker := NewWorker("worker-test", repo, queue, exec, zap.NewNop(), nil)
 
 	worker.process(context.Background(), queuedMessageFor(run, "3-0"))
 
 	if got, want := run.Status(), StatusFailed; got != want {
 		t.Errorf("Worker.process(max failure) status = %q, want %q", got, want)
+	}
+	if got, want := run.ErrorMessage(), "permanent"; got != want {
+		t.Errorf("Worker.process(max failure) error message = %q, want %q", got, want)
+	}
+	if want := []EventType{EventJobRunStarted, EventJobRunFailed, EventJobRunDLQ}; !eventTypesEqual(repo.events, want) {
+		t.Errorf("Worker.process(max failure) event types = %v, want %v", eventTypes(repo.events), want)
 	}
 	if got := len(queue.deadLetters); got != 1 {
 		t.Fatalf("Worker.process(max failure) dead letters = %d, want 1", got)
@@ -169,7 +188,7 @@ func TestWorker_processTerminalRunAcksWithoutExecute(t *testing.T) {
 	repo := &workerRepo{run: run}
 	queue := &workerQueue{}
 	exec := &workerExecutor{}
-	worker := NewWorker("worker-test", repo, queue, exec, zap.NewNop())
+	worker := NewWorker("worker-test", repo, queue, exec, zap.NewNop(), nil)
 
 	worker.process(context.Background(), queuedMessageFor(run, "4-0"))
 
@@ -213,6 +232,27 @@ func statusesEqual(a, b []Status) bool {
 	}
 	for i := range a {
 		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func eventTypes(events []*RunEvent) []EventType {
+	out := make([]EventType, 0, len(events))
+	for _, event := range events {
+		out = append(out, event.EventType())
+	}
+	return out
+}
+
+func eventTypesEqual(events []*RunEvent, want []EventType) bool {
+	got := eventTypes(events)
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
 			return false
 		}
 	}

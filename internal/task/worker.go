@@ -23,15 +23,17 @@ type Worker struct {
 	queue Queue
 	exec  Executor
 	log   *zap.Logger
+	m     *Metrics
 }
 
-func NewWorker(id string, repo Repo, queue Queue, exec Executor, log *zap.Logger) *Worker {
+func NewWorker(id string, repo Repo, queue Queue, exec Executor, log *zap.Logger, m *Metrics) *Worker {
 	return &Worker{
 		id:    id,
 		repo:  repo,
 		queue: queue,
 		exec:  exec,
 		log:   log,
+		m:     m,
 	}
 }
 
@@ -110,7 +112,7 @@ func (w *Worker) process(ctx context.Context, qm QueuedMessage) {
 	if err := w.persistStatus(ctx, run); err != nil {
 		return
 	}
-	w.appendEvent(ctx, run, StatusRunning)
+	w.appendEvent(ctx, run, EventJobRunStarted, nil)
 
 	if err := w.exec.Execute(ctx, run); err != nil {
 		w.handleFailure(ctx, qm, run, err)
@@ -124,12 +126,14 @@ func (w *Worker) process(ctx context.Context, qm QueuedMessage) {
 	if err := w.persistStatus(ctx, run); err != nil {
 		return
 	}
-	w.appendEvent(ctx, run, StatusSuccess)
+	w.appendEvent(ctx, run, EventJobRunSucceeded, nil)
+	w.m.recordRun(run)
 	w.ack(ctx, qm.StreamID)
 }
 
 func (w *Worker) handleFailure(ctx context.Context, qm QueuedMessage, run *JobRun, execErr error) {
 	if run.Attempts()+1 >= maxAttempts {
+		run.setError("execution_error", execErr.Error())
 		if err := run.MarkFailed(); err != nil {
 			w.log.Error("worker mark failed", zap.String("job_run_id", run.ID().String()), zap.Error(err))
 			return
@@ -137,15 +141,20 @@ func (w *Worker) handleFailure(ctx context.Context, qm QueuedMessage, run *JobRu
 		if err := w.persistStatus(ctx, run); err != nil {
 			return
 		}
-		w.appendEvent(ctx, run, StatusFailed)
+		payload := map[string]any{"error_code": run.ErrorCode(), "error_message": run.ErrorMessage()}
+		w.appendEvent(ctx, run, EventJobRunFailed, payload)
+		w.appendEvent(ctx, run, EventJobRunDLQ, payload)
 		if err := w.queue.DeadLetter(ctx, qm.Msg); err != nil {
 			w.log.Error("worker dead letter", zap.String("job_run_id", run.ID().String()), zap.Error(err))
 			return
 		}
+		w.m.recordRun(run)
+		w.m.recordDLQ()
 		w.ack(ctx, qm.StreamID)
 		return
 	}
 
+	run.setError("execution_error", execErr.Error())
 	if err := run.MarkRetry(); err != nil {
 		w.log.Error("worker mark retry", zap.String("job_run_id", run.ID().String()), zap.Error(err))
 		return
@@ -153,7 +162,8 @@ func (w *Worker) handleFailure(ctx context.Context, qm QueuedMessage, run *JobRu
 	if err := w.persistStatus(ctx, run); err != nil {
 		return
 	}
-	w.appendEvent(ctx, run, StatusRetry)
+	w.appendEvent(ctx, run, EventJobRunRetry, map[string]any{"attempt": run.Attempts(), "error": execErr.Error()})
+	w.m.recordRun(run)
 	if err := w.queue.Enqueue(ctx, JobRunMsg{
 		JobRunID: run.ID().String(),
 		Attempts: run.Attempts(),
@@ -173,9 +183,10 @@ func (w *Worker) persistStatus(ctx context.Context, run *JobRun) error {
 	return nil
 }
 
-func (w *Worker) appendEvent(ctx context.Context, run *JobRun, status Status) {
-	if err := w.repo.AppendEvent(ctx, NewRunEvent(run.TenantID(), run.JobID(), run.ID(), status)); err != nil {
-		w.log.Error("worker append event", zap.String("job_run_id", run.ID().String()), zap.String("status", string(status)), zap.Error(err))
+func (w *Worker) appendEvent(ctx context.Context, run *JobRun, eventType EventType, payload map[string]any) {
+	event := NewRunEvent(run.TenantID(), run.JobID(), run.ID(), run.Status(), eventType, payload)
+	if err := w.repo.AppendEvent(ctx, event); err != nil {
+		w.log.Error("worker append event", zap.String("job_run_id", run.ID().String()), zap.String("event_type", string(eventType)), zap.Error(err))
 	}
 }
 

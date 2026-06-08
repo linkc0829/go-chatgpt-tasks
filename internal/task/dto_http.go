@@ -36,15 +36,20 @@ type JobResponse struct {
 }
 
 type RunResponse struct {
-	ID          shared.JobRunID `json:"id"`
-	TenantID    shared.TenantID `json:"tenant_id"`
-	JobID       shared.JobID    `json:"job_id"`
-	Status      string          `json:"status"`
-	ScheduledAt string          `json:"scheduled_at"`
-	Sequence    int             `json:"sequence"`
-	Attempts    int             `json:"attempts"`
-	CreatedAt   string          `json:"created_at"`
-	UpdatedAt   string          `json:"updated_at"`
+	ID           shared.JobRunID `json:"id"`
+	TenantID     shared.TenantID `json:"tenant_id"`
+	JobID        shared.JobID    `json:"job_id"`
+	Status       string          `json:"status"`
+	ScheduledAt  string          `json:"scheduled_at"`
+	Sequence     int             `json:"sequence"`
+	Attempts     int             `json:"attempts"`
+	ErrorCode    string          `json:"error_code,omitempty"`
+	ErrorMessage string          `json:"error_message,omitempty"`
+	StartedAt    string          `json:"started_at,omitempty"`
+	CompletedAt  string          `json:"completed_at,omitempty"`
+	FailedAt     string          `json:"failed_at,omitempty"`
+	CreatedAt    string          `json:"created_at"`
+	UpdatedAt    string          `json:"updated_at"`
 }
 
 type ListRunsResponse struct {
@@ -54,16 +59,56 @@ type ListRunsResponse struct {
 	Offset int           `json:"offset"`
 }
 
+type RunEventResponse struct {
+	ID        shared.RunEventID `json:"id"`
+	TenantID  shared.TenantID   `json:"tenant_id"`
+	JobID     shared.JobID      `json:"job_id"`
+	JobRunID  shared.JobRunID   `json:"job_run_id"`
+	Status    string            `json:"status"`
+	EventType string            `json:"event_type"`
+	Payload   map[string]any    `json:"payload"`
+	CreatedAt string            `json:"created_at"`
+}
+
+type ListEventsResponse struct {
+	Events []RunEventResponse `json:"events"`
+}
+
 func runToHTTPResponse(run *JobRun) RunResponse {
 	return RunResponse{
-		ID:          run.ID(),
-		TenantID:    run.TenantID(),
-		JobID:       run.JobID(),
-		Status:      string(run.Status()),
-		ScheduledAt: run.ScheduledAt().Format(time.RFC3339),
-		Sequence:    run.Sequence(),
-		Attempts:    run.Attempts(),
-		CreatedAt:   run.CreatedAt().Format(time.RFC3339),
-		UpdatedAt:   run.UpdatedAt().Format(time.RFC3339),
+		ID:           run.ID(),
+		TenantID:     run.TenantID(),
+		JobID:        run.JobID(),
+		Status:       string(run.Status()),
+		ScheduledAt:  run.ScheduledAt().Format(time.RFC3339),
+		Sequence:     run.Sequence(),
+		Attempts:     run.Attempts(),
+		ErrorCode:    run.ErrorCode(),
+		ErrorMessage: run.ErrorMessage(),
+		StartedAt:    formatTime(run.StartedAt()),
+		CompletedAt:  formatTime(run.CompletedAt()),
+		FailedAt:     formatTime(run.FailedAt()),
+		CreatedAt:    run.CreatedAt().Format(time.RFC3339),
+		UpdatedAt:    run.UpdatedAt().Format(time.RFC3339),
+	}
+}
+
+func formatTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
+}
+
+func eventToHTTPResponse(event *RunEvent) RunEventResponse {
+	return RunEventResponse{
+		ID:        event.ID(),
+		TenantID:  event.TenantID(),
+		JobID:     event.JobID(),
+		JobRunID:  event.JobRunID(),
+		Status:    string(event.Status()),
+		EventType: string(event.EventType()),
+		Payload:   event.Payload(),
+		CreatedAt: event.CreatedAt().Format(time.RFC3339),
 	}
 }
