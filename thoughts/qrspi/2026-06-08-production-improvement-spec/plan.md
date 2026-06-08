@@ -120,9 +120,9 @@ v1 implementation lives in `bootstrap` as a closure casting the user UUID to a `
 - [x] `make verify` passes
 - [x] new service test: `Create` with identity A then `List`/`Status` with identity B returns empty / `ErrJobRunNotFound`
 #### Manual
-- [ ] `make migrate-up` applies `0002`; `psql \d jobs` shows `tenant_id`, `user_id` NOT NULL
-- [ ] `POST /api/v1/jobs` with a valid JWT → 201; same call without token → 401
-- [ ] `GET /api/v1/jobs` returns only the caller's runs
+- [x] `make migrate-up` applies `0002`; `psql \d jobs` shows `tenant_id`, `user_id` NOT NULL
+- [x] `POST /api/v1/jobs` with a valid JWT → 201; same call without token → 401
+- [x] `GET /api/v1/jobs` returns only the caller's runs
 
 ---
 
