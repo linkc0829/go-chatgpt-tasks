@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -126,6 +127,14 @@ func load(requireJWT bool) (*Config, error) {
 	v.SetConfigType("env")
 	v.AddConfigPath(".")
 	_ = v.ReadInConfig() // ignore if missing
+	for key, env := range binds {
+		if _, ok := os.LookupEnv(env); ok {
+			continue
+		}
+		if v.IsSet(env) {
+			v.Set(key, v.Get(env))
+		}
+	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
