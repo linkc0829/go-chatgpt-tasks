@@ -18,6 +18,7 @@ type Config struct {
 	JWT    JWTConfig
 	OTel   OTelConfig
 	Logger LoggerConfig
+	Quota  QuotaConfig
 }
 
 type AppConfig struct {
@@ -59,6 +60,13 @@ type LoggerConfig struct {
 	Encoding string `mapstructure:"encoding"`
 }
 
+type QuotaConfig struct {
+	MaxJobsPerHour       int `mapstructure:"max_jobs_per_hour"`
+	MaxActiveRecurring   int `mapstructure:"max_active_recurring_jobs"`
+	MaxConcurrentRuns    int `mapstructure:"max_concurrent_runs"`
+	MaxDailyLLMCostCents int `mapstructure:"max_daily_llm_cost_cents"`
+}
+
 // Load reads config from env (with .env fallback). Env vars are upper-cased
 // and underscored, e.g. APP_ENV, POSTGRES_DSN.
 func Load() (*Config, error) {
@@ -91,6 +99,10 @@ func load(requireJWT bool) (*Config, error) {
 	v.SetDefault("otel.service_name", "go-chatgpt-tasks")
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("logger.encoding", "json")
+	v.SetDefault("quota.max_jobs_per_hour", 100)
+	v.SetDefault("quota.max_active_recurring_jobs", 20)
+	v.SetDefault("quota.max_concurrent_runs", 10)
+	v.SetDefault("quota.max_daily_llm_cost_cents", 1000)
 
 	// Env mapping: APP_ENV → app.env
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -99,24 +111,28 @@ func load(requireJWT bool) (*Config, error) {
 	// Manual binds (viper's automatic binding doesn't traverse nested keys
 	// reliably for unset envs).
 	binds := map[string]string{
-		"app.env":              "APP_ENV",
-		"app.name":             "APP_NAME",
-		"app.shutdown_timeout": "APP_SHUTDOWN_TIMEOUT",
-		"http.port":            "APP_PORT",
-		"db.dsn":               "POSTGRES_DSN",
-		"db.max_conns":         "POSTGRES_MAX_CONNS",
-		"db.min_conns":         "POSTGRES_MIN_CONNS",
-		"redis.addr":           "REDIS_ADDR",
-		"redis.password":       "REDIS_PASSWORD",
-		"redis.db":             "REDIS_DB",
-		"jwt.secret":           "JWT_SECRET",
-		"jwt.issuer":           "JWT_ISSUER",
-		"jwt.ttl":              "JWT_TTL",
-		"otel.enabled":         "OTEL_ENABLED",
-		"otel.endpoint":        "OTEL_ENDPOINT",
-		"otel.service_name":    "OTEL_SERVICE_NAME",
-		"logger.level":         "LOG_LEVEL",
-		"logger.encoding":      "LOG_ENCODING",
+		"app.env":                         "APP_ENV",
+		"app.name":                        "APP_NAME",
+		"app.shutdown_timeout":            "APP_SHUTDOWN_TIMEOUT",
+		"http.port":                       "APP_PORT",
+		"db.dsn":                          "POSTGRES_DSN",
+		"db.max_conns":                    "POSTGRES_MAX_CONNS",
+		"db.min_conns":                    "POSTGRES_MIN_CONNS",
+		"redis.addr":                      "REDIS_ADDR",
+		"redis.password":                  "REDIS_PASSWORD",
+		"redis.db":                        "REDIS_DB",
+		"jwt.secret":                      "JWT_SECRET",
+		"jwt.issuer":                      "JWT_ISSUER",
+		"jwt.ttl":                         "JWT_TTL",
+		"otel.enabled":                    "OTEL_ENABLED",
+		"otel.endpoint":                   "OTEL_ENDPOINT",
+		"otel.service_name":               "OTEL_SERVICE_NAME",
+		"logger.level":                    "LOG_LEVEL",
+		"logger.encoding":                 "LOG_ENCODING",
+		"quota.max_jobs_per_hour":         "QUOTA_MAX_JOBS_PER_HOUR",
+		"quota.max_active_recurring_jobs": "QUOTA_MAX_ACTIVE_RECURRING_JOBS",
+		"quota.max_concurrent_runs":       "QUOTA_MAX_CONCURRENT_RUNS",
+		"quota.max_daily_llm_cost_cents":  "QUOTA_MAX_DAILY_LLM_COST_CENTS",
 	}
 	for k, env := range binds {
 		_ = v.BindEnv(k, env)

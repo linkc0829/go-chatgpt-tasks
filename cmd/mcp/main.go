@@ -39,7 +39,13 @@ func main() {
 	}
 	defer pool.Close()
 
-	svc := task.NewService(task.NewPostgresRepo(pool))
+	quota := task.NewQuotaRepo(pool, task.Quota{
+		MaxJobsPerHour:       cfg.Quota.MaxJobsPerHour,
+		MaxActiveRecurring:   cfg.Quota.MaxActiveRecurring,
+		MaxConcurrentRuns:    cfg.Quota.MaxConcurrentRuns,
+		MaxDailyLLMCostCents: cfg.Quota.MaxDailyLLMCostCents,
+	})
+	svc := task.NewService(task.NewPostgresRepo(pool), quota)
 	ident, err := mcpIdentity()
 	if err != nil {
 		log.Fatalf("mcp identity: %v", err)
@@ -89,6 +95,12 @@ func loadLocalMCPConfig(loadErr error) (*config.Config, error) {
 			DSN:      "postgres://postgres:pgadmin@localhost:5432/chatpgt-tasks?sslmode=disable",
 			MaxConns: 20,
 			MinConns: 2,
+		},
+		Quota: config.QuotaConfig{
+			MaxJobsPerHour:       100,
+			MaxActiveRecurring:   20,
+			MaxConcurrentRuns:    10,
+			MaxDailyLLMCostCents: 1000,
 		},
 	}, nil
 }

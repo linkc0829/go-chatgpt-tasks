@@ -9,11 +9,17 @@ import (
 )
 
 type Service struct {
-	repo Repo
+	repo            Repo
+	quota           QuotaRepo
+	quotaRejections QuotaRejectionRecorder
 }
 
-func NewService(repo Repo) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repo, quota QuotaRepo, recorders ...QuotaRejectionRecorder) *Service {
+	s := &Service{repo: repo, quota: quota}
+	if len(recorders) > 0 {
+		s.quotaRejections = recorders[0]
+	}
+	return s
 }
 
 type CreateInput struct {
@@ -43,6 +49,9 @@ func (s *Service) Create(ctx context.Context, id Identity, in CreateInput) (*Job
 
 	j, err := NewJob(id.TenantID, id.UserID, kind, in.Description, in.Interval)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkQuota(ctx, id.TenantID, kind); err != nil {
 		return nil, err
 	}
 	if err := s.repo.SaveJob(ctx, j); err != nil {
@@ -137,4 +146,41 @@ func (s *Service) EventsForRun(ctx context.Context, id Identity, runID shared.Jo
 		return nil, fmt.Errorf("list events: %w", err)
 	}
 	return events, nil
+}
+
+func (s *Service) checkQuota(ctx context.Context, tenantID shared.TenantID, kind Kind) error {
+	if s.quota == nil {
+		return nil
+	}
+
+	quota, err := s.quota.Get(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("get tenant quota: %w", err)
+	}
+	jobs, err := s.quota.CountJobsSince(ctx, tenantID, time.Now().UTC().Add(-time.Hour))
+	if err != nil {
+		return fmt.Errorf("count jobs for quota: %w", err)
+	}
+	if jobs >= int64(quota.MaxJobsPerHour) {
+		return s.rejectQuota(tenantID, "max_jobs_per_hour")
+	}
+	if kind != KindRecurring {
+		return nil
+	}
+
+	active, err := s.quota.CountActiveRecurring(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("count active recurring jobs for quota: %w", err)
+	}
+	if active >= int64(quota.MaxActiveRecurring) {
+		return s.rejectQuota(tenantID, "max_active_recurring_jobs")
+	}
+	return nil
+}
+
+func (s *Service) rejectQuota(tenantID shared.TenantID, reason string) error {
+	if s.quotaRejections != nil {
+		s.quotaRejections.RecordQuotaRejection(tenantID, reason)
+	}
+	return fmt.Errorf("%w: %s", ErrQuotaExceeded, reason)
 }

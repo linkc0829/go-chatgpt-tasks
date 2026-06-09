@@ -104,3 +104,27 @@ VALUES (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(job_id), sqlc.arg(sequence),
         NULL, NULL, NULL, NULL, NULL,
         sqlc.arg(created_at), sqlc.arg(updated_at))
 ON CONFLICT (job_id, sequence) DO NOTHING;
+
+-- name: GetTenantQuota :one
+SELECT max_jobs_per_hour, max_active_recurring_jobs, max_concurrent_runs,
+       max_daily_llm_cost_cents
+FROM tenant_quotas
+WHERE tenant_id = sqlc.arg(tenant_id);
+
+-- name: CountJobsCreatedSince :one
+SELECT COUNT(*)
+FROM jobs
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND created_at >= sqlc.arg(since);
+
+-- name: CountActiveRecurringJobs :one
+SELECT COUNT(*)
+FROM jobs j
+WHERE j.tenant_id = sqlc.arg(tenant_id)
+  AND j.kind = 'recurring'
+  AND EXISTS (
+    SELECT 1
+    FROM job_runs r
+    WHERE r.job_id = j.id
+      AND r.status NOT IN ('success', 'failed', 'cancelled')
+  );

@@ -236,8 +236,8 @@ type Quota struct { MaxJobsPerHour, MaxActiveRecurring, MaxConcurrentRuns, MaxDa
 
 ### Verification
 #### Automated
-- [ ] `make verify` passes
-- [ ] service test: tenant A over `max_jobs_per_hour` → `ErrQuotaExceeded`, no job/run persisted, `task_quota_rejections_total` incremented; tenant B unaffected
+- [x] `make verify` passes
+- [x] service test: tenant A over `max_jobs_per_hour` → `ErrQuotaExceeded`, no job/run persisted, `task_quota_rejections_total` incremented; tenant B unaffected
 #### Manual
 - [ ] `make migrate-up` applies `0004`
 - [ ] over-quota `POST /jobs` → 429; `GET /metrics` shows `task_quota_rejections_total`; logs show the rejection with `tenant_id`

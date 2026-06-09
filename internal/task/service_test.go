@@ -104,7 +104,7 @@ func TestService_Create(t *testing.T) {
 
 	t.Run("create_one_off_pending_run", func(t *testing.T) {
 		repo := &fakeRepo{}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
 		run, err := svc.Create(context.Background(), ident, CreateInput{
 			Description: "Summarize tech news",
@@ -124,7 +124,7 @@ func TestService_Create(t *testing.T) {
 
 	t.Run("create_recurring_job", func(t *testing.T) {
 		repo := &fakeRepo{}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
 		_, err := svc.Create(context.Background(), ident, CreateInput{
 			Description: "Summarize tech news",
@@ -139,7 +139,7 @@ func TestService_Create(t *testing.T) {
 
 	t.Run("invalid_description", func(t *testing.T) {
 		repo := &fakeRepo{}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
 		_, err := svc.Create(context.Background(), ident, CreateInput{
 			Description: "",
@@ -159,7 +159,7 @@ func TestService_TenantIsolation(t *testing.T) {
 
 	t.Run("list_is_scoped_by_tenant", func(t *testing.T) {
 		repo := &fakeRepo{listRuns: []*JobRun{}, listTotal: 0}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
 		runs, total, err := svc.List(context.Background(), tenantB, shared.NewPagination(20, 0))
 
@@ -172,7 +172,7 @@ func TestService_TenantIsolation(t *testing.T) {
 		run, err := NewJobRun(tenantA.TenantID, shared.NewJobID(), 1, scheduledAt)
 		require.NoError(t, err)
 		repo := &fakeRepo{findRun: run}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
 		_, err = svc.Status(context.Background(), tenantB, run.ID())
 
@@ -185,7 +185,7 @@ func TestService_Cancel(t *testing.T) {
 	t.Run("cancel_pending_run", func(t *testing.T) {
 		run := newTestRun(t)
 		repo := &fakeRepo{findRun: run}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
 		got, err := svc.Cancel(context.Background(), identityForRun(run), run.ID())
 
@@ -203,7 +203,7 @@ func TestService_Cancel(t *testing.T) {
 		require.NoError(t, run.MarkRunning())
 		require.NoError(t, run.MarkSuccess())
 		repo := &fakeRepo{findRun: run}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
 		_, err := svc.Cancel(context.Background(), identityForRun(run), run.ID())
 
@@ -214,7 +214,7 @@ func TestService_Cancel(t *testing.T) {
 
 	t.Run("status_not_found", func(t *testing.T) {
 		repo := &fakeRepo{findRunErr: ErrJobRunNotFound}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
 		_, err := svc.Status(context.Background(), testIdentity(), shared.NewJobRunID())
 

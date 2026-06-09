@@ -48,6 +48,16 @@ type RunEvent struct {
 	EventPayload []byte
 }
 
+type TenantQuota struct {
+	TenantID               pgtype.UUID
+	MaxJobsPerHour         int32
+	MaxActiveRecurringJobs int32
+	MaxConcurrentRuns      int32
+	MaxDailyLlmCostCents   int32
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
 type User struct {
 	ID           pgtype.UUID
 	Email        string

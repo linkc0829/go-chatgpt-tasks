@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/auth"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/config"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/metrics"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/task"
@@ -29,6 +30,7 @@ func wireFeatures(
 	authMgr *auth.Manager,
 	metricsReg *metrics.Registry,
 	lg *zap.Logger,
+	quotaCfg config.QuotaConfig,
 ) []task.Runner {
 	api := engine.Group("/api/v1")
 
@@ -42,7 +44,14 @@ func wireFeatures(
 	user.RegisterRoutes(api, userHandler, authMgr)
 
 	taskRepo := task.NewPostgresRepo(pool)
-	taskSvc := task.NewService(taskRepo)
+	taskQuota := task.NewQuotaRepo(pool, task.Quota{
+		MaxJobsPerHour:       quotaCfg.MaxJobsPerHour,
+		MaxActiveRecurring:   quotaCfg.MaxActiveRecurring,
+		MaxConcurrentRuns:    quotaCfg.MaxConcurrentRuns,
+		MaxDailyLLMCostCents: quotaCfg.MaxDailyLLMCostCents,
+	})
+	taskMetrics := task.NewMetrics(metricsReg.Prometheus(), lg)
+	taskSvc := task.NewService(taskRepo, taskQuota, taskMetrics)
 	taskResolver := task.TenantResolverFunc(func(_ context.Context, uid shared.UserID) (shared.TenantID, error) {
 		return shared.ParseTenantID(uid.String())
 	})
@@ -52,8 +61,6 @@ func wireFeatures(
 	taskQueue := task.NewRedisQueue(rdb)
 	watcher := task.NewWatcher(taskRepo, taskQueue, 5*time.Second, lg)
 	exec := task.NewStubExecutor(lg)
-	taskMetrics := task.NewMetrics(metricsReg.Prometheus())
-
 	const workerCount = 3
 	runners := []task.Runner{watcher}
 	for i := 0; i < workerCount; i++ {

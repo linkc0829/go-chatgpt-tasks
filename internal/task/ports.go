@@ -23,6 +23,16 @@ type Repo interface {
 	FindTerminalRecurringRuns(ctx context.Context, since time.Time, limit int32) ([]NextRunSpec, error)
 }
 
+type QuotaRepo interface {
+	Get(ctx context.Context, tenantID shared.TenantID) (Quota, error)
+	CountJobsSince(ctx context.Context, tenantID shared.TenantID, since time.Time) (int64, error)
+	CountActiveRecurring(ctx context.Context, tenantID shared.TenantID) (int64, error)
+}
+
+type QuotaRejectionRecorder interface {
+	RecordQuotaRejection(tenantID shared.TenantID, reason string)
+}
+
 type Queue interface {
 	Enqueue(ctx context.Context, m JobRunMsg) error
 	EnsureGroup(ctx context.Context) error

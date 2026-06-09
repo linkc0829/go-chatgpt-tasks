@@ -215,6 +215,109 @@ func (mr *MockRepoMockRecorder) UpdateRunStatus(ctx, r interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunStatus", reflect.TypeOf((*MockRepo)(nil).UpdateRunStatus), ctx, r)
 }
 
+// MockQuotaRepo is a mock of QuotaRepo interface.
+type MockQuotaRepo struct {
+	ctrl     *gomock.Controller
+	recorder *MockQuotaRepoMockRecorder
+}
+
+// MockQuotaRepoMockRecorder is the mock recorder for MockQuotaRepo.
+type MockQuotaRepoMockRecorder struct {
+	mock *MockQuotaRepo
+}
+
+// NewMockQuotaRepo creates a new mock instance.
+func NewMockQuotaRepo(ctrl *gomock.Controller) *MockQuotaRepo {
+	mock := &MockQuotaRepo{ctrl: ctrl}
+	mock.recorder = &MockQuotaRepoMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockQuotaRepo) EXPECT() *MockQuotaRepoMockRecorder {
+	return m.recorder
+}
+
+// CountActiveRecurring mocks base method.
+func (m *MockQuotaRepo) CountActiveRecurring(ctx context.Context, tenantID shared.TenantID) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountActiveRecurring", ctx, tenantID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountActiveRecurring indicates an expected call of CountActiveRecurring.
+func (mr *MockQuotaRepoMockRecorder) CountActiveRecurring(ctx, tenantID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountActiveRecurring", reflect.TypeOf((*MockQuotaRepo)(nil).CountActiveRecurring), ctx, tenantID)
+}
+
+// CountJobsSince mocks base method.
+func (m *MockQuotaRepo) CountJobsSince(ctx context.Context, tenantID shared.TenantID, since time.Time) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountJobsSince", ctx, tenantID, since)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountJobsSince indicates an expected call of CountJobsSince.
+func (mr *MockQuotaRepoMockRecorder) CountJobsSince(ctx, tenantID, since interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountJobsSince", reflect.TypeOf((*MockQuotaRepo)(nil).CountJobsSince), ctx, tenantID, since)
+}
+
+// Get mocks base method.
+func (m *MockQuotaRepo) Get(ctx context.Context, tenantID shared.TenantID) (task.Quota, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, tenantID)
+	ret0, _ := ret[0].(task.Quota)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockQuotaRepoMockRecorder) Get(ctx, tenantID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockQuotaRepo)(nil).Get), ctx, tenantID)
+}
+
+// MockQuotaRejectionRecorder is a mock of QuotaRejectionRecorder interface.
+type MockQuotaRejectionRecorder struct {
+	ctrl     *gomock.Controller
+	recorder *MockQuotaRejectionRecorderMockRecorder
+}
+
+// MockQuotaRejectionRecorderMockRecorder is the mock recorder for MockQuotaRejectionRecorder.
+type MockQuotaRejectionRecorderMockRecorder struct {
+	mock *MockQuotaRejectionRecorder
+}
+
+// NewMockQuotaRejectionRecorder creates a new mock instance.
+func NewMockQuotaRejectionRecorder(ctrl *gomock.Controller) *MockQuotaRejectionRecorder {
+	mock := &MockQuotaRejectionRecorder{ctrl: ctrl}
+	mock.recorder = &MockQuotaRejectionRecorderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockQuotaRejectionRecorder) EXPECT() *MockQuotaRejectionRecorderMockRecorder {
+	return m.recorder
+}
+
+// RecordQuotaRejection mocks base method.
+func (m *MockQuotaRejectionRecorder) RecordQuotaRejection(tenantID shared.TenantID, reason string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RecordQuotaRejection", tenantID, reason)
+}
+
+// RecordQuotaRejection indicates an expected call of RecordQuotaRejection.
+func (mr *MockQuotaRejectionRecorderMockRecorder) RecordQuotaRejection(tenantID, reason interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordQuotaRejection", reflect.TypeOf((*MockQuotaRejectionRecorder)(nil).RecordQuotaRejection), tenantID, reason)
+}
+
 // MockQueue is a mock of Queue interface.
 type MockQueue struct {
 	ctrl     *gomock.Controller

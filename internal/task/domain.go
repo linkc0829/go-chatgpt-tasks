@@ -40,6 +40,13 @@ const (
 	EventJobCancelled    EventType = "job.cancelled"
 )
 
+type Quota struct {
+	MaxJobsPerHour       int
+	MaxActiveRecurring   int
+	MaxConcurrentRuns    int
+	MaxDailyLLMCostCents int
+}
+
 type Job struct {
 	id          shared.JobID
 	tenantID    shared.TenantID

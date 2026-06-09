@@ -203,6 +203,8 @@ func writeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrJobNotFound), errors.Is(err, ErrJobRunNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, ErrQuotaExceeded):
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrInvalidDescription),
 		errors.Is(err, ErrInvalidSchedule),
 		errors.Is(err, ErrInvalidOwner):

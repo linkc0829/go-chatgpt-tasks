@@ -11,6 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveRecurringJobs = `-- name: CountActiveRecurringJobs :one
+SELECT COUNT(*)
+FROM jobs j
+WHERE j.tenant_id = $1
+  AND j.kind = 'recurring'
+  AND EXISTS (
+    SELECT 1
+    FROM job_runs r
+    WHERE r.job_id = j.id
+      AND r.status NOT IN ('success', 'failed', 'cancelled')
+  )
+`
+
+func (q *Queries) CountActiveRecurringJobs(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveRecurringJobs, tenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countJobRuns = `-- name: CountJobRuns :one
 SELECT COUNT(*) FROM job_runs WHERE tenant_id = $1
 `
@@ -35,6 +55,25 @@ type CountJobRunsByJobParams struct {
 
 func (q *Queries) CountJobRunsByJob(ctx context.Context, arg CountJobRunsByJobParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countJobRunsByJob, arg.TenantID, arg.JobID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countJobsCreatedSince = `-- name: CountJobsCreatedSince :one
+SELECT COUNT(*)
+FROM jobs
+WHERE tenant_id = $1
+  AND created_at >= $2
+`
+
+type CountJobsCreatedSinceParams struct {
+	TenantID pgtype.UUID
+	Since    pgtype.Timestamptz
+}
+
+func (q *Queries) CountJobsCreatedSince(ctx context.Context, arg CountJobsCreatedSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countJobsCreatedSince, arg.TenantID, arg.Since)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -186,6 +225,32 @@ func (q *Queries) GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunB
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTenantQuota = `-- name: GetTenantQuota :one
+SELECT max_jobs_per_hour, max_active_recurring_jobs, max_concurrent_runs,
+       max_daily_llm_cost_cents
+FROM tenant_quotas
+WHERE tenant_id = $1
+`
+
+type GetTenantQuotaRow struct {
+	MaxJobsPerHour         int32
+	MaxActiveRecurringJobs int32
+	MaxConcurrentRuns      int32
+	MaxDailyLlmCostCents   int32
+}
+
+func (q *Queries) GetTenantQuota(ctx context.Context, tenantID pgtype.UUID) (GetTenantQuotaRow, error) {
+	row := q.db.QueryRow(ctx, getTenantQuota, tenantID)
+	var i GetTenantQuotaRow
+	err := row.Scan(
+		&i.MaxJobsPerHour,
+		&i.MaxActiveRecurringJobs,
+		&i.MaxConcurrentRuns,
+		&i.MaxDailyLlmCostCents,
 	)
 	return i, err
 }

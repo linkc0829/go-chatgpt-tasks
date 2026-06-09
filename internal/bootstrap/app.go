@@ -104,7 +104,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*App, error) {
 
 	// ----- Wire feature slices -----------------------------------------
 	// All cross-feature port wiring happens in wire.go.
-	runners := wireFeatures(engine, pool, rdb, authMgr, metricsReg, lg)
+	runners := wireFeatures(engine, pool, rdb, authMgr, metricsReg, lg, cfg.Quota)
 
 	// ----- HTTP server wrapper ------------------------------------------
 	srv := httpserver.Wrap(engine, httpserver.Config{Port: cfg.HTTP.Port}, lg)

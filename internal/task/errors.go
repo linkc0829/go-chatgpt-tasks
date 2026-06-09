@@ -9,4 +9,5 @@ var (
 	ErrInvalidSchedule         = errors.New("invalid schedule")
 	ErrInvalidOwner            = errors.New("invalid owner")
 	ErrInvalidStatusTransition = errors.New("invalid status transition")
+	ErrQuotaExceeded           = errors.New("tenant quota exceeded")
 )

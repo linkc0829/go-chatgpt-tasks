@@ -11,11 +11,14 @@ import (
 )
 
 type Querier interface {
+	CountActiveRecurringJobs(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountJobRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountJobRunsByJob(ctx context.Context, arg CountJobRunsByJobParams) (int64, error)
+	CountJobsCreatedSince(ctx context.Context, arg CountJobsCreatedSinceParams) (int64, error)
 	FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]FindDueJobRunsRow, error)
 	GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error)
 	GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunByIDRow, error)
+	GetTenantQuota(ctx context.Context, tenantID pgtype.UUID) (GetTenantQuotaRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	InsertJob(ctx context.Context, arg InsertJobParams) error
