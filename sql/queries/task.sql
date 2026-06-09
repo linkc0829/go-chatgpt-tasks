@@ -1,19 +1,21 @@
 -- name: InsertJob :exec
 INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
                   scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+                  side_effecting, idempotency_scope,
                   created_at, updated_at)
 VALUES (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(user_id), sqlc.arg(kind),
         sqlc.arg(description), sqlc.arg(interval_seconds), sqlc.arg(schedule_type),
         sqlc.arg(scheduled_at_utc), sqlc.arg(recurrence_rule), sqlc.arg(local_time),
-        sqlc.arg(timezone_id), sqlc.arg(original_user_text), sqlc.arg(created_at), sqlc.arg(updated_at));
+        sqlc.arg(timezone_id), sqlc.arg(original_user_text), sqlc.arg(side_effecting),
+        sqlc.arg(idempotency_scope), sqlc.arg(created_at), sqlc.arg(updated_at));
 
 -- name: InsertJobRun :exec
 INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
-                      attempts, error_code, error_message, started_at, completed_at, failed_at,
+                      attempts, idempotency_key, error_code, error_message, started_at, completed_at, failed_at,
                       created_at, updated_at)
 VALUES (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(job_id), sqlc.arg(sequence),
         sqlc.arg(status), sqlc.arg(scheduled_at), sqlc.arg(time_bucket),
-        sqlc.arg(attempts), sqlc.arg(error_code), sqlc.arg(error_message),
+        sqlc.arg(attempts), sqlc.arg(idempotency_key), sqlc.arg(error_code), sqlc.arg(error_message),
         sqlc.arg(started_at), sqlc.arg(completed_at), sqlc.arg(failed_at),
         sqlc.arg(created_at), sqlc.arg(updated_at));
 
@@ -30,12 +32,12 @@ SET status = sqlc.arg(status),
 WHERE id = sqlc.arg(id);
 
 -- name: GetJobRunByID :one
-SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts,
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs WHERE id = sqlc.arg(id);
 
 -- name: ListJobRuns :many
-SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts,
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs
 WHERE tenant_id = sqlc.arg(tenant_id)
@@ -46,7 +48,7 @@ LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 SELECT COUNT(*) FROM job_runs WHERE tenant_id = sqlc.arg(tenant_id);
 
 -- name: FindDueJobRuns :many
-SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts,
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs
 WHERE time_bucket <= sqlc.arg(time_bucket)
@@ -61,7 +63,7 @@ VALUES (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(job_id), sqlc.arg(job_run_id
         sqlc.arg(status), sqlc.arg(event_type), sqlc.arg(event_payload), sqlc.arg(created_at));
 
 -- name: ListJobRunsByJob :many
-SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts,
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs
 WHERE tenant_id = sqlc.arg(tenant_id)
@@ -84,6 +86,7 @@ ORDER BY created_at;
 -- name: GetJobByID :one
 SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
        scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+       side_effecting, idempotency_scope,
        created_at, updated_at
 FROM jobs WHERE id = sqlc.arg(id);
 
@@ -103,10 +106,10 @@ LIMIT sqlc.arg(lim);
 
 -- name: InsertJobRunIfAbsent :execrows
 INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
-                      attempts, error_code, error_message, started_at, completed_at, failed_at,
+                      attempts, idempotency_key, error_code, error_message, started_at, completed_at, failed_at,
                       created_at, updated_at)
 VALUES (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(job_id), sqlc.arg(sequence), 'pending',
-        sqlc.arg(scheduled_at), sqlc.arg(time_bucket), 0,
+        sqlc.arg(scheduled_at), sqlc.arg(time_bucket), 0, sqlc.arg(idempotency_key),
         NULL, NULL, NULL, NULL, NULL,
         sqlc.arg(created_at), sqlc.arg(updated_at))
 ON CONFLICT (job_id, sequence) DO NOTHING;
@@ -134,3 +137,25 @@ WHERE j.tenant_id = sqlc.arg(tenant_id)
     WHERE r.job_id = j.id
       AND r.status NOT IN ('success', 'failed', 'cancelled')
   );
+
+-- name: BeginIdempotency :execrows
+INSERT INTO idempotency_records (
+  idempotency_key, job_run_id, handler_name, status, created_at, updated_at
+)
+VALUES (
+  sqlc.arg(idempotency_key), sqlc.arg(job_run_id), sqlc.arg(handler_name),
+  'in_progress', sqlc.arg(created_at), sqlc.arg(updated_at)
+)
+ON CONFLICT (idempotency_key) DO NOTHING;
+
+-- name: GetIdempotency :one
+SELECT idempotency_key, handler_name, status, response_hash
+FROM idempotency_records
+WHERE idempotency_key = sqlc.arg(idempotency_key);
+
+-- name: CompleteIdempotency :execrows
+UPDATE idempotency_records
+SET status = 'completed',
+    response_hash = sqlc.arg(response_hash),
+    updated_at = sqlc.arg(updated_at)
+WHERE idempotency_key = sqlc.arg(idempotency_key);

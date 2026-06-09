@@ -318,6 +318,74 @@ func (mr *MockQuotaRejectionRecorderMockRecorder) RecordQuotaRejection(tenantID,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordQuotaRejection", reflect.TypeOf((*MockQuotaRejectionRecorder)(nil).RecordQuotaRejection), tenantID, reason)
 }
 
+// MockIdempotencyStore is a mock of IdempotencyStore interface.
+type MockIdempotencyStore struct {
+	ctrl     *gomock.Controller
+	recorder *MockIdempotencyStoreMockRecorder
+}
+
+// MockIdempotencyStoreMockRecorder is the mock recorder for MockIdempotencyStore.
+type MockIdempotencyStoreMockRecorder struct {
+	mock *MockIdempotencyStore
+}
+
+// NewMockIdempotencyStore creates a new mock instance.
+func NewMockIdempotencyStore(ctrl *gomock.Controller) *MockIdempotencyStore {
+	mock := &MockIdempotencyStore{ctrl: ctrl}
+	mock.recorder = &MockIdempotencyStoreMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIdempotencyStore) EXPECT() *MockIdempotencyStoreMockRecorder {
+	return m.recorder
+}
+
+// Begin mocks base method.
+func (m *MockIdempotencyStore) Begin(ctx context.Context, key, handler string, runID shared.JobRunID) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Begin", ctx, key, handler, runID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Begin indicates an expected call of Begin.
+func (mr *MockIdempotencyStoreMockRecorder) Begin(ctx, key, handler, runID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Begin", reflect.TypeOf((*MockIdempotencyStore)(nil).Begin), ctx, key, handler, runID)
+}
+
+// Complete mocks base method.
+func (m *MockIdempotencyStore) Complete(ctx context.Context, key, responseHash string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Complete", ctx, key, responseHash)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Complete indicates an expected call of Complete.
+func (mr *MockIdempotencyStoreMockRecorder) Complete(ctx, key, responseHash interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Complete", reflect.TypeOf((*MockIdempotencyStore)(nil).Complete), ctx, key, responseHash)
+}
+
+// Lookup mocks base method.
+func (m *MockIdempotencyStore) Lookup(ctx context.Context, key string) (task.IdempotencyRecord, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Lookup", ctx, key)
+	ret0, _ := ret[0].(task.IdempotencyRecord)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// Lookup indicates an expected call of Lookup.
+func (mr *MockIdempotencyStoreMockRecorder) Lookup(ctx, key interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Lookup", reflect.TypeOf((*MockIdempotencyStore)(nil).Lookup), ctx, key)
+}
+
 // MockQueue is a mock of Queue interface.
 type MockQueue struct {
 	ctrl     *gomock.Controller

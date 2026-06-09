@@ -165,8 +165,10 @@ func (w *Worker) handleFailure(ctx context.Context, qm QueuedMessage, run *JobRu
 	w.appendEvent(ctx, run, EventJobRunRetry, map[string]any{"attempt": run.Attempts(), "error": execErr.Error()})
 	w.m.recordRun(run)
 	if err := w.queue.Enqueue(ctx, JobRunMsg{
-		JobRunID: run.ID().String(),
-		Attempts: run.Attempts(),
+		JobRunID:       run.ID().String(),
+		TenantID:       run.TenantID().String(),
+		IdempotencyKey: run.IdempotencyKey(),
+		Attempts:       run.Attempts(),
 	}); err != nil {
 		w.log.Error("worker enqueue retry", zap.String("job_run_id", run.ID().String()), zap.Error(err))
 		return

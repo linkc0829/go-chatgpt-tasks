@@ -8,6 +8,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type IdempotencyRecord struct {
+	IdempotencyKey string
+	JobRunID       pgtype.UUID
+	HandlerName    string
+	Status         string
+	ResponseHash   *string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
 type Job struct {
 	ID               pgtype.UUID
 	Kind             string
@@ -23,24 +33,27 @@ type Job struct {
 	LocalTime        *string
 	TimezoneID       string
 	OriginalUserText *string
+	SideEffecting    bool
+	IdempotencyScope string
 }
 
 type JobRun struct {
-	ID           pgtype.UUID
-	JobID        pgtype.UUID
-	Sequence     int32
-	Status       string
-	ScheduledAt  pgtype.Timestamptz
-	TimeBucket   int64
-	Attempts     int32
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	TenantID     pgtype.UUID
-	ErrorCode    *string
-	ErrorMessage *string
-	StartedAt    pgtype.Timestamptz
-	CompletedAt  pgtype.Timestamptz
-	FailedAt     pgtype.Timestamptz
+	ID             pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	TenantID       pgtype.UUID
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	IdempotencyKey string
 }
 
 type RunEvent struct {

@@ -33,6 +33,12 @@ type QuotaRejectionRecorder interface {
 	RecordQuotaRejection(tenantID shared.TenantID, reason string)
 }
 
+type IdempotencyStore interface {
+	Lookup(ctx context.Context, key string) (rec IdempotencyRecord, found bool, err error)
+	Begin(ctx context.Context, key, handler string, runID shared.JobRunID) (acquired bool, err error)
+	Complete(ctx context.Context, key, responseHash string) error
+}
+
 type Queue interface {
 	Enqueue(ctx context.Context, m JobRunMsg) error
 	EnsureGroup(ctx context.Context) error

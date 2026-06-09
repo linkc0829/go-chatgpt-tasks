@@ -60,7 +60,8 @@ func wireFeatures(
 
 	taskQueue := task.NewRedisQueue(rdb)
 	watcher := task.NewWatcher(taskRepo, taskQueue, 5*time.Second, lg)
-	exec := task.NewStubExecutor(lg)
+	baseExec := task.NewStubExecutor(lg)
+	exec := task.NewIdempotentExecutor(taskRepo, task.NewIdempotencyStore(pool), baseExec, lg)
 	const workerCount = 3
 	runners := []task.Runner{watcher}
 	for i := 0; i < workerCount; i++ {

@@ -11,11 +11,14 @@ import (
 )
 
 type Querier interface {
+	BeginIdempotency(ctx context.Context, arg BeginIdempotencyParams) (int64, error)
+	CompleteIdempotency(ctx context.Context, arg CompleteIdempotencyParams) (int64, error)
 	CountActiveRecurringJobs(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountJobRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountJobRunsByJob(ctx context.Context, arg CountJobRunsByJobParams) (int64, error)
 	CountJobsCreatedSince(ctx context.Context, arg CountJobsCreatedSinceParams) (int64, error)
 	FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]FindDueJobRunsRow, error)
+	GetIdempotency(ctx context.Context, idempotencyKey string) (GetIdempotencyRow, error)
 	GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error)
 	GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunByIDRow, error)
 	GetTenantQuota(ctx context.Context, tenantID pgtype.UUID) (GetTenantQuotaRow, error)

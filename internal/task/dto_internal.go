@@ -27,6 +27,8 @@ func jobFromSqlc(r sqlc.GetJobByIDRow) *Job {
 		stringValue(r.LocalTime),
 		r.TimezoneID,
 		stringValue(r.OriginalUserText),
+		r.SideEffecting,
+		r.IdempotencyScope,
 		postgres.PgToTime(r.CreatedAt),
 		postgres.PgToTime(r.UpdatedAt),
 	)
@@ -46,6 +48,8 @@ func jobToInsertParams(j *Job) sqlc.InsertJobParams {
 		LocalTime:        stringPtr(j.LocalTime()),
 		TimezoneID:       j.TimezoneID(),
 		OriginalUserText: stringPtr(j.OriginalUserText()),
+		SideEffecting:    j.SideEffecting(),
+		IdempotencyScope: j.IdempotencyScope(),
 		CreatedAt:        postgres.TimeToPg(j.CreatedAt()),
 		UpdatedAt:        postgres.TimeToPg(j.UpdatedAt()),
 	}
@@ -61,6 +65,7 @@ func jobRunFromGetByIDRow(r sqlc.GetJobRunByIDRow) *JobRun {
 		postgres.PgToTime(r.ScheduledAt),
 		r.TimeBucket,
 		int(r.Attempts),
+		r.IdempotencyKey,
 		stringValue(r.ErrorCode),
 		stringValue(r.ErrorMessage),
 		postgres.PgToTime(r.StartedAt),
@@ -81,6 +86,7 @@ func jobRunFromListRow(r sqlc.ListJobRunsRow) *JobRun {
 		postgres.PgToTime(r.ScheduledAt),
 		r.TimeBucket,
 		int(r.Attempts),
+		r.IdempotencyKey,
 		stringValue(r.ErrorCode),
 		stringValue(r.ErrorMessage),
 		postgres.PgToTime(r.StartedAt),
@@ -101,6 +107,7 @@ func jobRunFromDueRow(r sqlc.FindDueJobRunsRow) *JobRun {
 		postgres.PgToTime(r.ScheduledAt),
 		r.TimeBucket,
 		int(r.Attempts),
+		r.IdempotencyKey,
 		stringValue(r.ErrorCode),
 		stringValue(r.ErrorMessage),
 		postgres.PgToTime(r.StartedAt),
@@ -121,6 +128,7 @@ func jobRunFromJobRow(r sqlc.ListJobRunsByJobRow) *JobRun {
 		postgres.PgToTime(r.ScheduledAt),
 		r.TimeBucket,
 		int(r.Attempts),
+		r.IdempotencyKey,
 		stringValue(r.ErrorCode),
 		stringValue(r.ErrorMessage),
 		postgres.PgToTime(r.StartedAt),
@@ -133,21 +141,22 @@ func jobRunFromJobRow(r sqlc.ListJobRunsByJobRow) *JobRun {
 
 func jobRunToInsertParams(r *JobRun) sqlc.InsertJobRunParams {
 	return sqlc.InsertJobRunParams{
-		ID:           postgres.UUIDToPg(uuid.UUID(r.ID())),
-		TenantID:     postgres.UUIDToPg(uuid.UUID(r.TenantID())),
-		JobID:        postgres.UUIDToPg(uuid.UUID(r.JobID())),
-		Sequence:     int32(r.Sequence()), //nolint:gosec // domain validation keeps sequence positive and bounded by DB int use.
-		Status:       string(r.Status()),
-		ScheduledAt:  postgres.TimeToPg(r.ScheduledAt()),
-		TimeBucket:   r.TimeBucket(),
-		Attempts:     int32(r.Attempts()), //nolint:gosec // attempts is controlled by domain transitions and DB int use.
-		ErrorCode:    stringPtr(r.ErrorCode()),
-		ErrorMessage: stringPtr(r.ErrorMessage()),
-		StartedAt:    nullableTimeToPg(r.StartedAt()),
-		CompletedAt:  nullableTimeToPg(r.CompletedAt()),
-		FailedAt:     nullableTimeToPg(r.FailedAt()),
-		CreatedAt:    postgres.TimeToPg(r.CreatedAt()),
-		UpdatedAt:    postgres.TimeToPg(r.UpdatedAt()),
+		ID:             postgres.UUIDToPg(uuid.UUID(r.ID())),
+		TenantID:       postgres.UUIDToPg(uuid.UUID(r.TenantID())),
+		JobID:          postgres.UUIDToPg(uuid.UUID(r.JobID())),
+		Sequence:       int32(r.Sequence()), //nolint:gosec // domain validation keeps sequence positive and bounded by DB int use.
+		Status:         string(r.Status()),
+		ScheduledAt:    postgres.TimeToPg(r.ScheduledAt()),
+		TimeBucket:     r.TimeBucket(),
+		Attempts:       int32(r.Attempts()), //nolint:gosec // attempts is controlled by domain transitions and DB int use.
+		IdempotencyKey: r.IdempotencyKey(),
+		ErrorCode:      stringPtr(r.ErrorCode()),
+		ErrorMessage:   stringPtr(r.ErrorMessage()),
+		StartedAt:      nullableTimeToPg(r.StartedAt()),
+		CompletedAt:    nullableTimeToPg(r.CompletedAt()),
+		FailedAt:       nullableTimeToPg(r.FailedAt()),
+		CreatedAt:      postgres.TimeToPg(r.CreatedAt()),
+		UpdatedAt:      postgres.TimeToPg(r.UpdatedAt()),
 	}
 }
 
@@ -167,14 +176,15 @@ func jobRunToUpdateStatusParams(r *JobRun) sqlc.UpdateJobRunStatusParams {
 
 func jobRunToInsertIfAbsentParams(r *JobRun) sqlc.InsertJobRunIfAbsentParams {
 	return sqlc.InsertJobRunIfAbsentParams{
-		ID:          postgres.UUIDToPg(uuid.UUID(r.ID())),
-		TenantID:    postgres.UUIDToPg(uuid.UUID(r.TenantID())),
-		JobID:       postgres.UUIDToPg(uuid.UUID(r.JobID())),
-		Sequence:    int32(r.Sequence()), //nolint:gosec // domain validation keeps sequence positive and bounded by DB int use.
-		ScheduledAt: postgres.TimeToPg(r.ScheduledAt()),
-		TimeBucket:  r.TimeBucket(),
-		CreatedAt:   postgres.TimeToPg(r.CreatedAt()),
-		UpdatedAt:   postgres.TimeToPg(r.UpdatedAt()),
+		ID:             postgres.UUIDToPg(uuid.UUID(r.ID())),
+		TenantID:       postgres.UUIDToPg(uuid.UUID(r.TenantID())),
+		JobID:          postgres.UUIDToPg(uuid.UUID(r.JobID())),
+		Sequence:       int32(r.Sequence()), //nolint:gosec // domain validation keeps sequence positive and bounded by DB int use.
+		ScheduledAt:    postgres.TimeToPg(r.ScheduledAt()),
+		TimeBucket:     r.TimeBucket(),
+		IdempotencyKey: r.IdempotencyKey(),
+		CreatedAt:      postgres.TimeToPg(r.CreatedAt()),
+		UpdatedAt:      postgres.TimeToPg(r.UpdatedAt()),
 	}
 }
 
@@ -266,8 +276,25 @@ type NextRunSpec struct {
 }
 
 type JobRunMsg struct {
-	JobRunID string `json:"job_run_id"`
-	Attempts int    `json:"attempts"`
+	JobRunID       string `json:"job_run_id"`
+	TenantID       string `json:"tenant_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	Attempts       int    `json:"attempts"`
+}
+
+type IdempotencyRecord struct {
+	Key          string
+	Handler      string
+	Status       string
+	ResponseHash string
+}
+
+type HandlerInput struct {
+	JobRunID       shared.JobRunID
+	IdempotencyKey string
+	TenantID       string
+	JobType        string
+	Payload        map[string]any
 }
 
 func nextRunSpecFromSqlc(r sqlc.ListTerminalRecurringRunsRow) NextRunSpec {

@@ -2,6 +2,7 @@
 package task
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,14 +31,15 @@ const (
 type EventType string
 
 const (
-	EventJobRunCreated   EventType = "job_run.created"
-	EventJobRunEnqueued  EventType = "job_run.enqueued"
-	EventJobRunStarted   EventType = "job_run.started"
-	EventJobRunSucceeded EventType = "job_run.succeeded"
-	EventJobRunFailed    EventType = "job_run.failed"
-	EventJobRunRetry     EventType = "job_run.retry_scheduled"
-	EventJobRunDLQ       EventType = "job_run.dlq"
-	EventJobCancelled    EventType = "job.cancelled"
+	EventJobRunCreated     EventType = "job_run.created"
+	EventJobRunEnqueued    EventType = "job_run.enqueued"
+	EventJobRunStarted     EventType = "job_run.started"
+	EventJobRunSucceeded   EventType = "job_run.succeeded"
+	EventJobRunFailed      EventType = "job_run.failed"
+	EventJobRunRetry       EventType = "job_run.retry_scheduled"
+	EventJobRunDLQ         EventType = "job_run.dlq"
+	EventJobCancelled      EventType = "job.cancelled"
+	EventDuplicateDetected EventType = "job_run.duplicate_detected"
 )
 
 type Quota struct {
@@ -55,6 +57,8 @@ type ScheduleSpec struct {
 	TimezoneID       string
 	OriginalUserText string
 	LegacyInterval   time.Duration
+	SideEffecting    bool
+	IdempotencyScope string
 }
 
 type Job struct {
@@ -70,6 +74,8 @@ type Job struct {
 	localTime        string
 	timezoneID       string
 	originalUserText string
+	sideEffecting    bool
+	idempotencyScope string
 	createdAt        time.Time
 	updatedAt        time.Time
 }
@@ -94,6 +100,7 @@ type JobRun struct {
 	recurrenceRule string
 	localTime      string
 	timezoneID     string
+	idempotencyKey string
 }
 
 type RunEvent struct {
@@ -156,6 +163,9 @@ func NewJob(tenantID shared.TenantID, userID shared.UserID, description string, 
 			return nil, err
 		}
 	}
+	if schedule.IdempotencyScope == "" {
+		schedule.IdempotencyScope = "job_run"
+	}
 
 	now := time.Now().UTC()
 	return &Job{
@@ -171,6 +181,8 @@ func NewJob(tenantID shared.TenantID, userID shared.UserID, description string, 
 		localTime:        schedule.LocalTime,
 		timezoneID:       schedule.TimezoneID,
 		originalUserText: schedule.OriginalUserText,
+		sideEffecting:    schedule.SideEffecting,
+		idempotencyScope: schedule.IdempotencyScope,
 		createdAt:        now,
 		updatedAt:        now,
 	}, nil
@@ -184,15 +196,16 @@ func NewJobRun(tenantID shared.TenantID, jobID shared.JobID, sequence int, sched
 	now := time.Now().UTC()
 	scheduledAt = scheduledAt.UTC()
 	return &JobRun{
-		id:          shared.NewJobRunID(),
-		tenantID:    tenantID,
-		jobID:       jobID,
-		sequence:    sequence,
-		status:      StatusPending,
-		scheduledAt: scheduledAt,
-		timeBucket:  bucketOf(scheduledAt),
-		createdAt:   now,
-		updatedAt:   now,
+		id:             shared.NewJobRunID(),
+		tenantID:       tenantID,
+		jobID:          jobID,
+		sequence:       sequence,
+		status:         StatusPending,
+		scheduledAt:    scheduledAt,
+		timeBucket:     bucketOf(scheduledAt),
+		idempotencyKey: jobID.String() + ":" + strconv.Itoa(sequence),
+		createdAt:      now,
+		updatedAt:      now,
 	}, nil
 }
 
@@ -240,6 +253,8 @@ func rehydrateJob(
 	localTime string,
 	timezoneID string,
 	originalUserText string,
+	sideEffecting bool,
+	idempotencyScope string,
 	createdAt time.Time,
 	updatedAt time.Time,
 ) *Job {
@@ -256,6 +271,8 @@ func rehydrateJob(
 		localTime:        localTime,
 		timezoneID:       timezoneID,
 		originalUserText: originalUserText,
+		sideEffecting:    sideEffecting,
+		idempotencyScope: idempotencyScope,
 		createdAt:        createdAt,
 		updatedAt:        updatedAt,
 	}
@@ -270,6 +287,7 @@ func rehydrateJobRun(
 	scheduledAt time.Time,
 	timeBucket int64,
 	attempts int,
+	idempotencyKey string,
 	errorCode string,
 	errorMsg string,
 	startedAt time.Time,
@@ -279,21 +297,22 @@ func rehydrateJobRun(
 	updatedAt time.Time,
 ) *JobRun {
 	return &JobRun{
-		id:          id,
-		tenantID:    tenantID,
-		jobID:       jobID,
-		sequence:    sequence,
-		status:      status,
-		scheduledAt: scheduledAt,
-		timeBucket:  timeBucket,
-		attempts:    attempts,
-		errorCode:   errorCode,
-		errorMsg:    errorMsg,
-		startedAt:   startedAt,
-		completedAt: completedAt,
-		failedAt:    failedAt,
-		createdAt:   createdAt,
-		updatedAt:   updatedAt,
+		id:             id,
+		tenantID:       tenantID,
+		jobID:          jobID,
+		sequence:       sequence,
+		status:         status,
+		scheduledAt:    scheduledAt,
+		timeBucket:     timeBucket,
+		attempts:       attempts,
+		idempotencyKey: idempotencyKey,
+		errorCode:      errorCode,
+		errorMsg:       errorMsg,
+		startedAt:      startedAt,
+		completedAt:    completedAt,
+		failedAt:       failedAt,
+		createdAt:      createdAt,
+		updatedAt:      updatedAt,
 	}
 }
 
@@ -390,6 +409,8 @@ func (j *Job) RecurrenceRule() string    { return j.recurrenceRule }
 func (j *Job) LocalTime() string         { return j.localTime }
 func (j *Job) TimezoneID() string        { return j.timezoneID }
 func (j *Job) OriginalUserText() string  { return j.originalUserText }
+func (j *Job) SideEffecting() bool       { return j.sideEffecting }
+func (j *Job) IdempotencyScope() string  { return j.idempotencyScope }
 func (j *Job) CreatedAt() time.Time      { return j.createdAt }
 func (j *Job) UpdatedAt() time.Time      { return j.updatedAt }
 func (r *JobRun) ID() shared.JobRunID    { return r.id }
@@ -413,6 +434,7 @@ func (r *JobRun) ScheduleType() Kind     { return r.scheduleType }
 func (r *JobRun) RecurrenceRule() string { return r.recurrenceRule }
 func (r *JobRun) LocalTime() string      { return r.localTime }
 func (r *JobRun) TimezoneID() string     { return r.timezoneID }
+func (r *JobRun) IdempotencyKey() string { return r.idempotencyKey }
 func (e *RunEvent) ID() shared.RunEventID {
 	return e.id
 }

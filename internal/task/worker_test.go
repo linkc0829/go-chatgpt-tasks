@@ -220,8 +220,10 @@ func queuedMessageFor(run *JobRun, streamID string) QueuedMessage {
 	return QueuedMessage{
 		StreamID: streamID,
 		Msg: JobRunMsg{
-			JobRunID: run.ID().String(),
-			Attempts: run.Attempts(),
+			JobRunID:       run.ID().String(),
+			TenantID:       run.TenantID().String(),
+			IdempotencyKey: run.IdempotencyKey(),
+			Attempts:       run.Attempts(),
 		},
 	}
 }

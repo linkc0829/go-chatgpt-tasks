@@ -11,6 +11,61 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const beginIdempotency = `-- name: BeginIdempotency :execrows
+INSERT INTO idempotency_records (
+  idempotency_key, job_run_id, handler_name, status, created_at, updated_at
+)
+VALUES (
+  $1, $2, $3,
+  'in_progress', $4, $5
+)
+ON CONFLICT (idempotency_key) DO NOTHING
+`
+
+type BeginIdempotencyParams struct {
+	IdempotencyKey string
+	JobRunID       pgtype.UUID
+	HandlerName    string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) BeginIdempotency(ctx context.Context, arg BeginIdempotencyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, beginIdempotency,
+		arg.IdempotencyKey,
+		arg.JobRunID,
+		arg.HandlerName,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const completeIdempotency = `-- name: CompleteIdempotency :execrows
+UPDATE idempotency_records
+SET status = 'completed',
+    response_hash = $1,
+    updated_at = $2
+WHERE idempotency_key = $3
+`
+
+type CompleteIdempotencyParams struct {
+	ResponseHash   *string
+	UpdatedAt      pgtype.Timestamptz
+	IdempotencyKey string
+}
+
+func (q *Queries) CompleteIdempotency(ctx context.Context, arg CompleteIdempotencyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completeIdempotency, arg.ResponseHash, arg.UpdatedAt, arg.IdempotencyKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countActiveRecurringJobs = `-- name: CountActiveRecurringJobs :one
 SELECT COUNT(*)
 FROM jobs j
@@ -80,7 +135,7 @@ func (q *Queries) CountJobsCreatedSince(ctx context.Context, arg CountJobsCreate
 }
 
 const findDueJobRuns = `-- name: FindDueJobRuns :many
-SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts,
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs
 WHERE time_bucket <= $1
@@ -97,21 +152,22 @@ type FindDueJobRunsParams struct {
 }
 
 type FindDueJobRunsRow struct {
-	ID           pgtype.UUID
-	TenantID     pgtype.UUID
-	JobID        pgtype.UUID
-	Sequence     int32
-	Status       string
-	ScheduledAt  pgtype.Timestamptz
-	TimeBucket   int64
-	Attempts     int32
-	ErrorCode    *string
-	ErrorMessage *string
-	StartedAt    pgtype.Timestamptz
-	CompletedAt  pgtype.Timestamptz
-	FailedAt     pgtype.Timestamptz
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]FindDueJobRunsRow, error) {
@@ -132,6 +188,7 @@ func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) 
 			&i.ScheduledAt,
 			&i.TimeBucket,
 			&i.Attempts,
+			&i.IdempotencyKey,
 			&i.ErrorCode,
 			&i.ErrorMessage,
 			&i.StartedAt,
@@ -150,9 +207,35 @@ func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) 
 	return items, nil
 }
 
+const getIdempotency = `-- name: GetIdempotency :one
+SELECT idempotency_key, handler_name, status, response_hash
+FROM idempotency_records
+WHERE idempotency_key = $1
+`
+
+type GetIdempotencyRow struct {
+	IdempotencyKey string
+	HandlerName    string
+	Status         string
+	ResponseHash   *string
+}
+
+func (q *Queries) GetIdempotency(ctx context.Context, idempotencyKey string) (GetIdempotencyRow, error) {
+	row := q.db.QueryRow(ctx, getIdempotency, idempotencyKey)
+	var i GetIdempotencyRow
+	err := row.Scan(
+		&i.IdempotencyKey,
+		&i.HandlerName,
+		&i.Status,
+		&i.ResponseHash,
+	)
+	return i, err
+}
+
 const getJobByID = `-- name: GetJobByID :one
 SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
        scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+       side_effecting, idempotency_scope,
        created_at, updated_at
 FROM jobs WHERE id = $1
 `
@@ -170,6 +253,8 @@ type GetJobByIDRow struct {
 	LocalTime        *string
 	TimezoneID       string
 	OriginalUserText *string
+	SideEffecting    bool
+	IdempotencyScope string
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 }
@@ -190,6 +275,8 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow
 		&i.LocalTime,
 		&i.TimezoneID,
 		&i.OriginalUserText,
+		&i.SideEffecting,
+		&i.IdempotencyScope,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -197,27 +284,28 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow
 }
 
 const getJobRunByID = `-- name: GetJobRunByID :one
-SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts,
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs WHERE id = $1
 `
 
 type GetJobRunByIDRow struct {
-	ID           pgtype.UUID
-	TenantID     pgtype.UUID
-	JobID        pgtype.UUID
-	Sequence     int32
-	Status       string
-	ScheduledAt  pgtype.Timestamptz
-	TimeBucket   int64
-	Attempts     int32
-	ErrorCode    *string
-	ErrorMessage *string
-	StartedAt    pgtype.Timestamptz
-	CompletedAt  pgtype.Timestamptz
-	FailedAt     pgtype.Timestamptz
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunByIDRow, error) {
@@ -232,6 +320,7 @@ func (q *Queries) GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunB
 		&i.ScheduledAt,
 		&i.TimeBucket,
 		&i.Attempts,
+		&i.IdempotencyKey,
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.StartedAt,
@@ -272,11 +361,13 @@ func (q *Queries) GetTenantQuota(ctx context.Context, tenantID pgtype.UUID) (Get
 const insertJob = `-- name: InsertJob :exec
 INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
                   scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+                  side_effecting, idempotency_scope,
                   created_at, updated_at)
 VALUES ($1, $2, $3, $4,
         $5, $6, $7,
         $8, $9, $10,
-        $11, $12, $13, $14)
+        $11, $12, $13,
+        $14, $15, $16)
 `
 
 type InsertJobParams struct {
@@ -292,6 +383,8 @@ type InsertJobParams struct {
 	LocalTime        *string
 	TimezoneID       string
 	OriginalUserText *string
+	SideEffecting    bool
+	IdempotencyScope string
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 }
@@ -310,6 +403,8 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.LocalTime,
 		arg.TimezoneID,
 		arg.OriginalUserText,
+		arg.SideEffecting,
+		arg.IdempotencyScope,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -318,31 +413,32 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 
 const insertJobRun = `-- name: InsertJobRun :exec
 INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
-                      attempts, error_code, error_message, started_at, completed_at, failed_at,
+                      attempts, idempotency_key, error_code, error_message, started_at, completed_at, failed_at,
                       created_at, updated_at)
 VALUES ($1, $2, $3, $4,
         $5, $6, $7,
-        $8, $9, $10,
-        $11, $12, $13,
-        $14, $15)
+        $8, $9, $10, $11,
+        $12, $13, $14,
+        $15, $16)
 `
 
 type InsertJobRunParams struct {
-	ID           pgtype.UUID
-	TenantID     pgtype.UUID
-	JobID        pgtype.UUID
-	Sequence     int32
-	Status       string
-	ScheduledAt  pgtype.Timestamptz
-	TimeBucket   int64
-	Attempts     int32
-	ErrorCode    *string
-	ErrorMessage *string
-	StartedAt    pgtype.Timestamptz
-	CompletedAt  pgtype.Timestamptz
-	FailedAt     pgtype.Timestamptz
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) error {
@@ -355,6 +451,7 @@ func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) erro
 		arg.ScheduledAt,
 		arg.TimeBucket,
 		arg.Attempts,
+		arg.IdempotencyKey,
 		arg.ErrorCode,
 		arg.ErrorMessage,
 		arg.StartedAt,
@@ -368,24 +465,25 @@ func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) erro
 
 const insertJobRunIfAbsent = `-- name: InsertJobRunIfAbsent :execrows
 INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
-                      attempts, error_code, error_message, started_at, completed_at, failed_at,
+                      attempts, idempotency_key, error_code, error_message, started_at, completed_at, failed_at,
                       created_at, updated_at)
 VALUES ($1, $2, $3, $4, 'pending',
-        $5, $6, 0,
+        $5, $6, 0, $7,
         NULL, NULL, NULL, NULL, NULL,
-        $7, $8)
+        $8, $9)
 ON CONFLICT (job_id, sequence) DO NOTHING
 `
 
 type InsertJobRunIfAbsentParams struct {
-	ID          pgtype.UUID
-	TenantID    pgtype.UUID
-	JobID       pgtype.UUID
-	Sequence    int32
-	ScheduledAt pgtype.Timestamptz
-	TimeBucket  int64
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	IdempotencyKey string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) InsertJobRunIfAbsent(ctx context.Context, arg InsertJobRunIfAbsentParams) (int64, error) {
@@ -396,6 +494,7 @@ func (q *Queries) InsertJobRunIfAbsent(ctx context.Context, arg InsertJobRunIfAb
 		arg.Sequence,
 		arg.ScheduledAt,
 		arg.TimeBucket,
+		arg.IdempotencyKey,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -437,7 +536,7 @@ func (q *Queries) InsertRunEvent(ctx context.Context, arg InsertRunEventParams) 
 }
 
 const listJobRuns = `-- name: ListJobRuns :many
-SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts,
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs
 WHERE tenant_id = $1
@@ -452,21 +551,22 @@ type ListJobRunsParams struct {
 }
 
 type ListJobRunsRow struct {
-	ID           pgtype.UUID
-	TenantID     pgtype.UUID
-	JobID        pgtype.UUID
-	Sequence     int32
-	Status       string
-	ScheduledAt  pgtype.Timestamptz
-	TimeBucket   int64
-	Attempts     int32
-	ErrorCode    *string
-	ErrorMessage *string
-	StartedAt    pgtype.Timestamptz
-	CompletedAt  pgtype.Timestamptz
-	FailedAt     pgtype.Timestamptz
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]ListJobRunsRow, error) {
@@ -487,6 +587,7 @@ func (q *Queries) ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]Lis
 			&i.ScheduledAt,
 			&i.TimeBucket,
 			&i.Attempts,
+			&i.IdempotencyKey,
 			&i.ErrorCode,
 			&i.ErrorMessage,
 			&i.StartedAt,
@@ -506,7 +607,7 @@ func (q *Queries) ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]Lis
 }
 
 const listJobRunsByJob = `-- name: ListJobRunsByJob :many
-SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts,
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs
 WHERE tenant_id = $1
@@ -523,21 +624,22 @@ type ListJobRunsByJobParams struct {
 }
 
 type ListJobRunsByJobRow struct {
-	ID           pgtype.UUID
-	TenantID     pgtype.UUID
-	JobID        pgtype.UUID
-	Sequence     int32
-	Status       string
-	ScheduledAt  pgtype.Timestamptz
-	TimeBucket   int64
-	Attempts     int32
-	ErrorCode    *string
-	ErrorMessage *string
-	StartedAt    pgtype.Timestamptz
-	CompletedAt  pgtype.Timestamptz
-	FailedAt     pgtype.Timestamptz
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) ListJobRunsByJob(ctx context.Context, arg ListJobRunsByJobParams) ([]ListJobRunsByJobRow, error) {
@@ -563,6 +665,7 @@ func (q *Queries) ListJobRunsByJob(ctx context.Context, arg ListJobRunsByJobPara
 			&i.ScheduledAt,
 			&i.TimeBucket,
 			&i.Attempts,
+			&i.IdempotencyKey,
 			&i.ErrorCode,
 			&i.ErrorMessage,
 			&i.StartedAt,

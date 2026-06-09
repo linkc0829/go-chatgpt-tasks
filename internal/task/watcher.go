@@ -68,8 +68,10 @@ func (w *Watcher) scanOnce(ctx context.Context) {
 			}
 
 			if err := w.queue.Enqueue(cctx, JobRunMsg{
-				JobRunID: run.ID().String(),
-				Attempts: run.Attempts(),
+				JobRunID:       run.ID().String(),
+				TenantID:       run.TenantID().String(),
+				IdempotencyKey: run.IdempotencyKey(),
+				Attempts:       run.Attempts(),
 			}); err != nil {
 				w.log.Error("watcher enqueue", zap.Error(err))
 			}
