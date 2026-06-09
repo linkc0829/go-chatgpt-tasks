@@ -435,8 +435,8 @@ New event types (define in `domain.go`): `EventLLMTimeout = "llm.timeout"`, `Eve
 - [x] timeout → `llm.timeout` emitted, retried within budget
 - [x] cost over `max_daily_llm_cost_cents` → rejected/deferred before any model call
 #### Manual
-- [ ] `make migrate-up` applies `0008`; `jobs.job_type` exists and defaults to `generic_llm`
-- [ ] `curl /metrics | grep task_llm_` shows LLM series
+- [x] `make migrate-up` applies `0008`; `jobs.job_type` exists and defaults to `generic_llm`
+- [x] `curl /metrics | grep task_llm_` shows LLM series
 
 ---
 
