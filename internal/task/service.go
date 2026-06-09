@@ -23,9 +23,14 @@ func NewService(repo Repo, quota QuotaRepo, recorders ...QuotaRejectionRecorder)
 }
 
 type CreateInput struct {
-	Description string
-	ScheduledAt time.Time
-	Interval    time.Duration
+	Description      string
+	ScheduledAt      time.Time
+	Interval         time.Duration
+	ScheduleType     Kind
+	RecurrenceRule   string
+	LocalTime        string
+	TimezoneID       string
+	OriginalUserText string
 }
 
 type Identity struct {
@@ -42,29 +47,30 @@ func (s *Service) Create(ctx context.Context, id Identity, in CreateInput) (*Job
 		return nil, ErrInvalidOwner
 	}
 
-	kind := KindOneOff
-	if in.Interval > 0 {
-		kind = KindRecurring
-	}
-
-	j, err := NewJob(id.TenantID, id.UserID, kind, in.Description, in.Interval)
+	schedule, scheduledAt, err := scheduleFromInput(in)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.checkQuota(ctx, id.TenantID, kind); err != nil {
+
+	j, err := NewJob(id.TenantID, id.UserID, in.Description, schedule)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkQuota(ctx, id.TenantID, schedule.Type); err != nil {
 		return nil, err
 	}
 	if err := s.repo.SaveJob(ctx, j); err != nil {
 		return nil, fmt.Errorf("save job: %w", err)
 	}
 
-	run, err := NewJobRun(id.TenantID, j.ID(), 1, in.ScheduledAt)
+	run, err := NewJobRun(id.TenantID, j.ID(), 1, scheduledAt)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.repo.SaveRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("save run: %w", err)
 	}
+	run.setSchedule(j)
 	return run, nil
 }
 
@@ -92,6 +98,11 @@ func (s *Service) Status(ctx context.Context, id Identity, runID shared.JobRunID
 	if run.TenantID() != id.TenantID {
 		return nil, ErrJobRunNotFound
 	}
+	job, err := s.repo.FindJob(ctx, run.JobID())
+	if err != nil {
+		return nil, fmt.Errorf("find job schedule: %w", err)
+	}
+	run.setSchedule(job)
 	return run, nil
 }
 
@@ -183,4 +194,54 @@ func (s *Service) rejectQuota(tenantID shared.TenantID, reason string) error {
 		s.quotaRejections.RecordQuotaRejection(tenantID, reason)
 	}
 	return fmt.Errorf("%w: %s", ErrQuotaExceeded, reason)
+}
+
+func scheduleFromInput(in CreateInput) (ScheduleSpec, time.Time, error) {
+	kind := in.ScheduleType
+	if kind == "" {
+		kind = KindOneOff
+		if in.Interval > 0 || in.RecurrenceRule != "" {
+			kind = KindRecurring
+		}
+	}
+	timezoneID := in.TimezoneID
+	if timezoneID == "" {
+		timezoneID = "UTC"
+	}
+
+	spec := ScheduleSpec{
+		Type:             kind,
+		ScheduledAtUTC:   in.ScheduledAt,
+		RecurrenceRule:   in.RecurrenceRule,
+		LocalTime:        in.LocalTime,
+		TimezoneID:       timezoneID,
+		OriginalUserText: in.OriginalUserText,
+		LegacyInterval:   in.Interval,
+	}
+	if kind == KindOneOff {
+		if in.ScheduledAt.IsZero() {
+			return ScheduleSpec{}, time.Time{}, ErrInvalidSchedule
+		}
+		return spec, in.ScheduledAt.UTC(), nil
+	}
+	if spec.RecurrenceRule == "" {
+		spec.RecurrenceRule = "FREQ=DAILY"
+	}
+	if spec.LocalTime == "" && !in.ScheduledAt.IsZero() {
+		spec.LocalTime = in.ScheduledAt.In(time.UTC).Format("15:04")
+	}
+	rule, err := ParseRule(spec.RecurrenceRule)
+	if err != nil {
+		return ScheduleSpec{}, time.Time{}, err
+	}
+	tz, err := time.LoadLocation(spec.TimezoneID)
+	if err != nil {
+		return ScheduleSpec{}, time.Time{}, ErrInvalidTimezone
+	}
+	next, _, err := NextOccurrence(rule, spec.LocalTime, tz, time.Now().UTC())
+	if err != nil {
+		return ScheduleSpec{}, time.Time{}, err
+	}
+	spec.ScheduledAtUTC = next
+	return spec, next, nil
 }

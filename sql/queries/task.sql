@@ -1,8 +1,11 @@
 -- name: InsertJob :exec
-INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, created_at, updated_at)
+INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
+                  scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+                  created_at, updated_at)
 VALUES (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(user_id), sqlc.arg(kind),
-        sqlc.arg(description), sqlc.arg(interval_seconds), sqlc.arg(created_at),
-        sqlc.arg(updated_at));
+        sqlc.arg(description), sqlc.arg(interval_seconds), sqlc.arg(schedule_type),
+        sqlc.arg(scheduled_at_utc), sqlc.arg(recurrence_rule), sqlc.arg(local_time),
+        sqlc.arg(timezone_id), sqlc.arg(original_user_text), sqlc.arg(created_at), sqlc.arg(updated_at));
 
 -- name: InsertJobRun :exec
 INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
@@ -79,11 +82,14 @@ WHERE tenant_id = sqlc.arg(tenant_id)
 ORDER BY created_at;
 
 -- name: GetJobByID :one
-SELECT id, tenant_id, user_id, kind, description, interval_seconds, created_at, updated_at
+SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
+       scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+       created_at, updated_at
 FROM jobs WHERE id = sqlc.arg(id);
 
 -- name: ListTerminalRecurringRuns :many
-SELECT r.id, r.tenant_id, r.job_id, r.sequence, r.scheduled_at, j.interval_seconds
+SELECT r.id, r.tenant_id, r.job_id, r.sequence, r.scheduled_at,
+       j.timezone_id, j.recurrence_rule, j.local_time
 FROM run_events e
 JOIN job_runs r ON r.id = e.job_run_id
 JOIN jobs     j ON j.id = r.job_id

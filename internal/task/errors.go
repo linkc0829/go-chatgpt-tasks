@@ -10,4 +10,6 @@ var (
 	ErrInvalidOwner            = errors.New("invalid owner")
 	ErrInvalidStatusTransition = errors.New("invalid status transition")
 	ErrQuotaExceeded           = errors.New("tenant quota exceeded")
+	ErrInvalidTimezone         = errors.New("invalid timezone")
+	ErrInvalidRecurrence       = errors.New("invalid recurrence")
 )

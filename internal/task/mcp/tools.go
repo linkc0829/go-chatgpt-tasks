@@ -20,9 +20,14 @@ type ToolService interface {
 }
 
 type createArgs struct {
-	Description             string `json:"description"`
-	ScheduledAt             string `json:"scheduled_at"`
-	RecurringIntervalSecond int64  `json:"recurring_interval_seconds,omitempty"`
+	Description             string          `json:"description"`
+	ScheduledAt             string          `json:"scheduled_at,omitempty"`
+	RecurringIntervalSecond int64           `json:"recurring_interval_seconds,omitempty"`
+	ScheduleType            taskdomain.Kind `json:"schedule_type,omitempty"`
+	RecurrenceRule          string          `json:"recurrence_rule,omitempty"`
+	LocalTime               string          `json:"local_time,omitempty"`
+	TimezoneID              string          `json:"timezone_id,omitempty"`
+	OriginalUserText        string          `json:"original_user_text,omitempty"`
 }
 
 type listArgs struct {
@@ -41,10 +46,15 @@ type jobRef struct {
 }
 
 type runResponse struct {
-	JobID       string `json:"job_id"`
-	Status      string `json:"status"`
-	ScheduledAt string `json:"scheduled_at"`
-	Sequence    int    `json:"sequence,omitempty"`
+	JobID          string `json:"job_id"`
+	Status         string `json:"status"`
+	ScheduledAt    string `json:"scheduled_at"`
+	Sequence       int    `json:"sequence,omitempty"`
+	ScheduleType   string `json:"schedule_type,omitempty"`
+	RecurrenceRule string `json:"recurrence_rule,omitempty"`
+	LocalTime      string `json:"local_time,omitempty"`
+	TimezoneID     string `json:"timezone_id,omitempty"`
+	NextRunAtUTC   string `json:"next_run_at_utc,omitempty"`
 }
 
 type listResponse struct {
@@ -73,15 +83,24 @@ func Register(reg *Registry, svc ToolService, ident taskdomain.Identity) {
 		if err := decodeArgs(raw, &args); err != nil {
 			return nil, err
 		}
-		scheduledAt, err := time.Parse(time.RFC3339, args.ScheduledAt)
-		if err != nil {
-			return nil, fmt.Errorf("parse scheduled_at: %w", err)
+		var scheduledAt time.Time
+		if args.ScheduledAt != "" {
+			var err error
+			scheduledAt, err = time.Parse(time.RFC3339, args.ScheduledAt)
+			if err != nil {
+				return nil, fmt.Errorf("parse scheduled_at: %w", err)
+			}
 		}
 
 		run, err := svc.Create(ctx, ident, taskdomain.CreateInput{
-			Description: args.Description,
-			ScheduledAt: scheduledAt,
-			Interval:    time.Duration(args.RecurringIntervalSecond) * time.Second,
+			Description:      args.Description,
+			ScheduledAt:      scheduledAt,
+			Interval:         time.Duration(args.RecurringIntervalSecond) * time.Second,
+			ScheduleType:     args.ScheduleType,
+			RecurrenceRule:   args.RecurrenceRule,
+			LocalTime:        args.LocalTime,
+			TimezoneID:       args.TimezoneID,
+			OriginalUserText: args.OriginalUserText,
 		})
 		if err != nil {
 			return nil, err
@@ -193,10 +212,15 @@ func runIDFromArgs(raw json.RawMessage) (shared.JobRunID, error) {
 
 func runToResponse(run *taskdomain.JobRun) runResponse {
 	return runResponse{
-		JobID:       run.ID().String(),
-		Status:      string(run.Status()),
-		ScheduledAt: run.ScheduledAt().Format(time.RFC3339),
-		Sequence:    run.Sequence(),
+		JobID:          run.ID().String(),
+		Status:         string(run.Status()),
+		ScheduledAt:    run.ScheduledAt().Format(time.RFC3339),
+		Sequence:       run.Sequence(),
+		ScheduleType:   string(run.ScheduleType()),
+		RecurrenceRule: run.RecurrenceRule(),
+		LocalTime:      run.LocalTime(),
+		TimezoneID:     run.TimezoneID(),
+		NextRunAtUTC:   run.ScheduledAt().Format(time.RFC3339),
 	}
 }
 

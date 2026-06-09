@@ -151,19 +151,27 @@ func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) 
 }
 
 const getJobByID = `-- name: GetJobByID :one
-SELECT id, tenant_id, user_id, kind, description, interval_seconds, created_at, updated_at
+SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
+       scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+       created_at, updated_at
 FROM jobs WHERE id = $1
 `
 
 type GetJobByIDRow struct {
-	ID              pgtype.UUID
-	TenantID        pgtype.UUID
-	UserID          pgtype.UUID
-	Kind            string
-	Description     string
-	IntervalSeconds int64
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID               pgtype.UUID
+	TenantID         pgtype.UUID
+	UserID           pgtype.UUID
+	Kind             string
+	Description      string
+	IntervalSeconds  int64
+	ScheduleType     string
+	ScheduledAtUtc   pgtype.Timestamptz
+	RecurrenceRule   *string
+	LocalTime        *string
+	TimezoneID       string
+	OriginalUserText *string
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }
 
 func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error) {
@@ -176,6 +184,12 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow
 		&i.Kind,
 		&i.Description,
 		&i.IntervalSeconds,
+		&i.ScheduleType,
+		&i.ScheduledAtUtc,
+		&i.RecurrenceRule,
+		&i.LocalTime,
+		&i.TimezoneID,
+		&i.OriginalUserText,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -256,21 +270,30 @@ func (q *Queries) GetTenantQuota(ctx context.Context, tenantID pgtype.UUID) (Get
 }
 
 const insertJob = `-- name: InsertJob :exec
-INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, created_at, updated_at)
+INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
+                  scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+                  created_at, updated_at)
 VALUES ($1, $2, $3, $4,
         $5, $6, $7,
-        $8)
+        $8, $9, $10,
+        $11, $12, $13, $14)
 `
 
 type InsertJobParams struct {
-	ID              pgtype.UUID
-	TenantID        pgtype.UUID
-	UserID          pgtype.UUID
-	Kind            string
-	Description     string
-	IntervalSeconds int64
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID               pgtype.UUID
+	TenantID         pgtype.UUID
+	UserID           pgtype.UUID
+	Kind             string
+	Description      string
+	IntervalSeconds  int64
+	ScheduleType     string
+	ScheduledAtUtc   pgtype.Timestamptz
+	RecurrenceRule   *string
+	LocalTime        *string
+	TimezoneID       string
+	OriginalUserText *string
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }
 
 func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
@@ -281,6 +304,12 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.Kind,
 		arg.Description,
 		arg.IntervalSeconds,
+		arg.ScheduleType,
+		arg.ScheduledAtUtc,
+		arg.RecurrenceRule,
+		arg.LocalTime,
+		arg.TimezoneID,
+		arg.OriginalUserText,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -606,7 +635,8 @@ func (q *Queries) ListRunEventsByRun(ctx context.Context, arg ListRunEventsByRun
 }
 
 const listTerminalRecurringRuns = `-- name: ListTerminalRecurringRuns :many
-SELECT r.id, r.tenant_id, r.job_id, r.sequence, r.scheduled_at, j.interval_seconds
+SELECT r.id, r.tenant_id, r.job_id, r.sequence, r.scheduled_at,
+       j.timezone_id, j.recurrence_rule, j.local_time
 FROM run_events e
 JOIN job_runs r ON r.id = e.job_run_id
 JOIN jobs     j ON j.id = r.job_id
@@ -625,12 +655,14 @@ type ListTerminalRecurringRunsParams struct {
 }
 
 type ListTerminalRecurringRunsRow struct {
-	ID              pgtype.UUID
-	TenantID        pgtype.UUID
-	JobID           pgtype.UUID
-	Sequence        int32
-	ScheduledAt     pgtype.Timestamptz
-	IntervalSeconds int64
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	ScheduledAt    pgtype.Timestamptz
+	TimezoneID     string
+	RecurrenceRule *string
+	LocalTime      *string
 }
 
 func (q *Queries) ListTerminalRecurringRuns(ctx context.Context, arg ListTerminalRecurringRunsParams) ([]ListTerminalRecurringRunsRow, error) {
@@ -648,7 +680,9 @@ func (q *Queries) ListTerminalRecurringRuns(ctx context.Context, arg ListTermina
 			&i.JobID,
 			&i.Sequence,
 			&i.ScheduledAt,
-			&i.IntervalSeconds,
+			&i.TimezoneID,
+			&i.RecurrenceRule,
+			&i.LocalTime,
 		); err != nil {
 			return nil, err
 		}

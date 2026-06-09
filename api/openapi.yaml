@@ -248,11 +248,16 @@ components:
 
     CreateJobRequest:
       type: object
-      required: [description, scheduled_at]
+      required: [description]
       properties:
         description: { type: string, minLength: 1 }
         scheduled_at: { type: string, format: date-time }
         recurring_interval_seconds: { type: integer, minimum: 1 }
+        schedule_type: { type: string, enum: [one_off, recurring] }
+        recurrence_rule: { type: string, example: "FREQ=DAILY" }
+        local_time: { type: string, example: "08:00" }
+        timezone_id: { type: string, example: "Asia/Taipei" }
+        original_user_text: { type: string }
 
     RunResponse:
       type: object
@@ -271,6 +276,11 @@ components:
         failed_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        schedule_type: { type: string }
+        recurrence_rule: { type: string }
+        local_time: { type: string }
+        timezone_id: { type: string }
+        next_run_at_utc: { type: string, format: date-time }
 
     ListRunsResponse:
       type: object

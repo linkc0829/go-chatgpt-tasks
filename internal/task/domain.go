@@ -47,33 +47,53 @@ type Quota struct {
 	MaxDailyLLMCostCents int
 }
 
+type ScheduleSpec struct {
+	Type             Kind
+	ScheduledAtUTC   time.Time
+	RecurrenceRule   string
+	LocalTime        string
+	TimezoneID       string
+	OriginalUserText string
+	LegacyInterval   time.Duration
+}
+
 type Job struct {
-	id          shared.JobID
-	tenantID    shared.TenantID
-	userID      shared.UserID
-	kind        Kind
-	description string
-	interval    time.Duration
-	createdAt   time.Time
-	updatedAt   time.Time
+	id               shared.JobID
+	tenantID         shared.TenantID
+	userID           shared.UserID
+	kind             Kind
+	description      string
+	interval         time.Duration
+	scheduleType     Kind
+	scheduledAtUTC   time.Time
+	recurrenceRule   string
+	localTime        string
+	timezoneID       string
+	originalUserText string
+	createdAt        time.Time
+	updatedAt        time.Time
 }
 
 type JobRun struct {
-	id          shared.JobRunID
-	tenantID    shared.TenantID
-	jobID       shared.JobID
-	sequence    int
-	status      Status
-	scheduledAt time.Time
-	timeBucket  int64
-	attempts    int
-	errorCode   string
-	errorMsg    string
-	startedAt   time.Time
-	completedAt time.Time
-	failedAt    time.Time
-	createdAt   time.Time
-	updatedAt   time.Time
+	id             shared.JobRunID
+	tenantID       shared.TenantID
+	jobID          shared.JobID
+	sequence       int
+	status         Status
+	scheduledAt    time.Time
+	timeBucket     int64
+	attempts       int
+	errorCode      string
+	errorMsg       string
+	startedAt      time.Time
+	completedAt    time.Time
+	failedAt       time.Time
+	createdAt      time.Time
+	updatedAt      time.Time
+	scheduleType   Kind
+	recurrenceRule string
+	localTime      string
+	timezoneID     string
 }
 
 type RunEvent struct {
@@ -112,30 +132,47 @@ func mustUserID(s string) shared.UserID {
 	return id
 }
 
-func NewJob(tenantID shared.TenantID, userID shared.UserID, kind Kind, description string, interval time.Duration) (*Job, error) {
+func NewJob(tenantID shared.TenantID, userID shared.UserID, description string, schedule ScheduleSpec) (*Job, error) {
 	if tenantID.IsZero() || userID.IsZero() {
 		return nil, ErrInvalidOwner
 	}
 	if strings.TrimSpace(description) == "" {
 		return nil, ErrInvalidDescription
 	}
-	if kind == KindRecurring && interval <= 0 {
+	if schedule.Type != KindOneOff && schedule.Type != KindRecurring {
 		return nil, ErrInvalidSchedule
 	}
-	if kind != KindOneOff && kind != KindRecurring {
-		return nil, ErrInvalidSchedule
+	if schedule.TimezoneID == "" {
+		schedule.TimezoneID = "UTC"
+	}
+	if _, err := time.LoadLocation(schedule.TimezoneID); err != nil {
+		return nil, ErrInvalidTimezone
+	}
+	if schedule.Type == KindRecurring {
+		if _, err := ParseRule(schedule.RecurrenceRule); err != nil {
+			return nil, err
+		}
+		if _, _, err := parseLocalTime(schedule.LocalTime); err != nil {
+			return nil, err
+		}
 	}
 
 	now := time.Now().UTC()
 	return &Job{
-		id:          shared.NewJobID(),
-		tenantID:    tenantID,
-		userID:      userID,
-		kind:        kind,
-		description: description,
-		interval:    interval,
-		createdAt:   now,
-		updatedAt:   now,
+		id:               shared.NewJobID(),
+		tenantID:         tenantID,
+		userID:           userID,
+		kind:             schedule.Type,
+		description:      description,
+		interval:         schedule.LegacyInterval,
+		scheduleType:     schedule.Type,
+		scheduledAtUTC:   schedule.ScheduledAtUTC.UTC(),
+		recurrenceRule:   schedule.RecurrenceRule,
+		localTime:        schedule.LocalTime,
+		timezoneID:       schedule.TimezoneID,
+		originalUserText: schedule.OriginalUserText,
+		createdAt:        now,
+		updatedAt:        now,
 	}, nil
 }
 
@@ -197,18 +234,30 @@ func rehydrateJob(
 	kind Kind,
 	description string,
 	interval time.Duration,
+	scheduleType Kind,
+	scheduledAtUTC time.Time,
+	recurrenceRule string,
+	localTime string,
+	timezoneID string,
+	originalUserText string,
 	createdAt time.Time,
 	updatedAt time.Time,
 ) *Job {
 	return &Job{
-		id:          id,
-		tenantID:    tenantID,
-		userID:      userID,
-		kind:        kind,
-		description: description,
-		interval:    interval,
-		createdAt:   createdAt,
-		updatedAt:   updatedAt,
+		id:               id,
+		tenantID:         tenantID,
+		userID:           userID,
+		kind:             kind,
+		description:      description,
+		interval:         interval,
+		scheduleType:     scheduleType,
+		scheduledAtUTC:   scheduledAtUTC,
+		recurrenceRule:   recurrenceRule,
+		localTime:        localTime,
+		timezoneID:       timezoneID,
+		originalUserText: originalUserText,
+		createdAt:        createdAt,
+		updatedAt:        updatedAt,
 	}
 }
 
@@ -322,12 +371,25 @@ func (r *JobRun) IsTerminal() bool {
 	return r.status == StatusSuccess || r.status == StatusFailed || r.status == StatusCancelled
 }
 
+func (r *JobRun) setSchedule(j *Job) {
+	r.scheduleType = j.ScheduleType()
+	r.recurrenceRule = j.RecurrenceRule()
+	r.localTime = j.LocalTime()
+	r.timezoneID = j.TimezoneID()
+}
+
 func (j *Job) ID() shared.JobID          { return j.id }
 func (j *Job) TenantID() shared.TenantID { return j.tenantID }
 func (j *Job) UserID() shared.UserID     { return j.userID }
 func (j *Job) Kind() Kind                { return j.kind }
 func (j *Job) Description() string       { return j.description }
 func (j *Job) Interval() time.Duration   { return j.interval }
+func (j *Job) ScheduleType() Kind        { return j.scheduleType }
+func (j *Job) ScheduledAtUTC() time.Time { return j.scheduledAtUTC }
+func (j *Job) RecurrenceRule() string    { return j.recurrenceRule }
+func (j *Job) LocalTime() string         { return j.localTime }
+func (j *Job) TimezoneID() string        { return j.timezoneID }
+func (j *Job) OriginalUserText() string  { return j.originalUserText }
 func (j *Job) CreatedAt() time.Time      { return j.createdAt }
 func (j *Job) UpdatedAt() time.Time      { return j.updatedAt }
 func (r *JobRun) ID() shared.JobRunID    { return r.id }
@@ -347,6 +409,10 @@ func (r *JobRun) CompletedAt() time.Time { return r.completedAt }
 func (r *JobRun) FailedAt() time.Time    { return r.failedAt }
 func (r *JobRun) CreatedAt() time.Time   { return r.createdAt }
 func (r *JobRun) UpdatedAt() time.Time   { return r.updatedAt }
+func (r *JobRun) ScheduleType() Kind     { return r.scheduleType }
+func (r *JobRun) RecurrenceRule() string { return r.recurrenceRule }
+func (r *JobRun) LocalTime() string      { return r.localTime }
+func (r *JobRun) TimezoneID() string     { return r.timezoneID }
 func (e *RunEvent) ID() shared.RunEventID {
 	return e.id
 }

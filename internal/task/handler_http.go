@@ -207,6 +207,8 @@ func writeError(c *gin.Context, err error) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrInvalidDescription),
 		errors.Is(err, ErrInvalidSchedule),
+		errors.Is(err, ErrInvalidTimezone),
+		errors.Is(err, ErrInvalidRecurrence),
 		errors.Is(err, ErrInvalidOwner):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:

@@ -294,9 +294,9 @@ a `RunEvent` with the `DSTNote` in payload when non-empty. Update `ListTerminalR
 
 ### Verification
 #### Automated
-- [ ] `make verify` passes
-- [ ] `recurrence_test.go`: `08:00 America/New_York` resolves to the correct UTC before & after the 2026 DST transition; skipped & ambiguous cases return the right `DSTNote`
-- [ ] invalid timezone / unsupported FREQ → `ErrInvalidTimezone` / `ErrInvalidRecurrence`
+- [x] `make verify` passes
+- [x] `recurrence_test.go`: `08:00 America/New_York` resolves to the correct UTC before & after the 2026 DST transition; skipped & ambiguous cases return the right `DSTNote`
+- [x] invalid timezone / unsupported FREQ → `ErrInvalidTimezone` / `ErrInvalidRecurrence`
 #### Manual
 - [ ] `make migrate-up` applies `0005`
 - [ ] create a daily `08:00 Asia/Taipei` job; status shows local schedule + next UTC = `00:00Z`

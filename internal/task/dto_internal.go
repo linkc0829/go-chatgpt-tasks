@@ -21,6 +21,12 @@ func jobFromSqlc(r sqlc.GetJobByIDRow) *Job {
 		Kind(r.Kind),
 		r.Description,
 		time.Duration(r.IntervalSeconds)*time.Second,
+		Kind(r.ScheduleType),
+		postgres.PgToTime(r.ScheduledAtUtc),
+		stringValue(r.RecurrenceRule),
+		stringValue(r.LocalTime),
+		r.TimezoneID,
+		stringValue(r.OriginalUserText),
 		postgres.PgToTime(r.CreatedAt),
 		postgres.PgToTime(r.UpdatedAt),
 	)
@@ -28,14 +34,20 @@ func jobFromSqlc(r sqlc.GetJobByIDRow) *Job {
 
 func jobToInsertParams(j *Job) sqlc.InsertJobParams {
 	return sqlc.InsertJobParams{
-		ID:              postgres.UUIDToPg(uuid.UUID(j.ID())),
-		TenantID:        postgres.UUIDToPg(uuid.UUID(j.TenantID())),
-		UserID:          postgres.UUIDToPg(uuid.UUID(j.UserID())),
-		Kind:            string(j.Kind()),
-		Description:     j.Description(),
-		IntervalSeconds: int64(j.Interval() / time.Second),
-		CreatedAt:       postgres.TimeToPg(j.CreatedAt()),
-		UpdatedAt:       postgres.TimeToPg(j.UpdatedAt()),
+		ID:               postgres.UUIDToPg(uuid.UUID(j.ID())),
+		TenantID:         postgres.UUIDToPg(uuid.UUID(j.TenantID())),
+		UserID:           postgres.UUIDToPg(uuid.UUID(j.UserID())),
+		Kind:             string(j.Kind()),
+		Description:      j.Description(),
+		IntervalSeconds:  int64(j.Interval() / time.Second),
+		ScheduleType:     string(j.ScheduleType()),
+		ScheduledAtUtc:   nullableTimeToPg(j.ScheduledAtUTC()),
+		RecurrenceRule:   stringPtr(j.RecurrenceRule()),
+		LocalTime:        stringPtr(j.LocalTime()),
+		TimezoneID:       j.TimezoneID(),
+		OriginalUserText: stringPtr(j.OriginalUserText()),
+		CreatedAt:        postgres.TimeToPg(j.CreatedAt()),
+		UpdatedAt:        postgres.TimeToPg(j.UpdatedAt()),
 	}
 }
 
@@ -244,11 +256,13 @@ func payloadFromJSON(b []byte) (map[string]any, error) {
 }
 
 type NextRunSpec struct {
-	TenantID    shared.TenantID
-	JobID       shared.JobID
-	Sequence    int
-	ScheduledAt time.Time
-	Interval    time.Duration
+	TenantID       shared.TenantID
+	JobID          shared.JobID
+	Sequence       int
+	ScheduledAt    time.Time
+	TimezoneID     string
+	RecurrenceRule string
+	LocalTime      string
 }
 
 type JobRunMsg struct {
@@ -258,10 +272,12 @@ type JobRunMsg struct {
 
 func nextRunSpecFromSqlc(r sqlc.ListTerminalRecurringRunsRow) NextRunSpec {
 	return NextRunSpec{
-		JobID:       shared.JobID(postgres.PgToUUID(r.JobID)),
-		TenantID:    shared.TenantID(postgres.PgToUUID(r.TenantID)),
-		Sequence:    int(r.Sequence),
-		ScheduledAt: postgres.PgToTime(r.ScheduledAt),
-		Interval:    time.Duration(r.IntervalSeconds) * time.Second,
+		JobID:          shared.JobID(postgres.PgToUUID(r.JobID)),
+		TenantID:       shared.TenantID(postgres.PgToUUID(r.TenantID)),
+		Sequence:       int(r.Sequence),
+		ScheduledAt:    postgres.PgToTime(r.ScheduledAt),
+		TimezoneID:     r.TimezoneID,
+		RecurrenceRule: stringValue(r.RecurrenceRule),
+		LocalTime:      stringValue(r.LocalTime),
 	}
 }

@@ -60,11 +60,13 @@ func (r *recurringWatcherRepo) FindTerminalRecurringRuns(
 func TestRecurringWatcher_scanOnceCreatesNextRun(t *testing.T) {
 	scheduledAt := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	spec := NextRunSpec{
-		TenantID:    shared.NewTenantID(),
-		JobID:       shared.NewJobID(),
-		Sequence:    1,
-		ScheduledAt: scheduledAt,
-		Interval:    5 * time.Second,
+		TenantID:       shared.NewTenantID(),
+		JobID:          shared.NewJobID(),
+		Sequence:       1,
+		ScheduledAt:    scheduledAt,
+		TimezoneID:     "UTC",
+		RecurrenceRule: "FREQ=DAILY",
+		LocalTime:      "09:00",
 	}
 	repo := &recurringWatcherRepo{specs: []NextRunSpec{spec}, created: true}
 	watcher := NewRecurringWatcher(repo, time.Hour, zap.NewNop())
@@ -81,7 +83,7 @@ func TestRecurringWatcher_scanOnceCreatesNextRun(t *testing.T) {
 	if got, want := run.Sequence(), 2; got != want {
 		t.Errorf("RecurringWatcher.scanOnce() sequence = %d, want %d", got, want)
 	}
-	if got, want := run.ScheduledAt(), scheduledAt.Add(5*time.Second); !got.Equal(want) {
+	if got, want := run.ScheduledAt(), scheduledAt.Add(24*time.Hour); !got.Equal(want) {
 		t.Errorf("RecurringWatcher.scanOnce() scheduled_at = %s, want %s", got, want)
 	}
 	if got, want := run.Status(), StatusPending; got != want {
@@ -91,11 +93,13 @@ func TestRecurringWatcher_scanOnceCreatesNextRun(t *testing.T) {
 
 func TestRecurringWatcher_scanOnceConflictIsNoop(t *testing.T) {
 	spec := NextRunSpec{
-		TenantID:    shared.NewTenantID(),
-		JobID:       shared.NewJobID(),
-		Sequence:    1,
-		ScheduledAt: time.Now().UTC(),
-		Interval:    5 * time.Second,
+		TenantID:       shared.NewTenantID(),
+		JobID:          shared.NewJobID(),
+		Sequence:       1,
+		ScheduledAt:    time.Now().UTC(),
+		TimezoneID:     "UTC",
+		RecurrenceRule: "FREQ=DAILY",
+		LocalTime:      "09:00",
 	}
 	repo := &recurringWatcherRepo{specs: []NextRunSpec{spec}, created: false}
 	watcher := NewRecurringWatcher(repo, time.Hour, zap.NewNop())

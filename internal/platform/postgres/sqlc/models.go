@@ -9,14 +9,20 @@ import (
 )
 
 type Job struct {
-	ID              pgtype.UUID
-	Kind            string
-	Description     string
-	IntervalSeconds int64
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	TenantID        pgtype.UUID
-	UserID          pgtype.UUID
+	ID               pgtype.UUID
+	Kind             string
+	Description      string
+	IntervalSeconds  int64
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	TenantID         pgtype.UUID
+	UserID           pgtype.UUID
+	ScheduleType     string
+	ScheduledAtUtc   pgtype.Timestamptz
+	RecurrenceRule   *string
+	LocalTime        *string
+	TimezoneID       string
+	OriginalUserText *string
 }
 
 type JobRun struct {

@@ -127,14 +127,16 @@ func TestService_Create(t *testing.T) {
 		svc := NewService(repo, nil)
 
 		_, err := svc.Create(context.Background(), ident, CreateInput{
-			Description: "Summarize tech news",
-			ScheduledAt: scheduledAt,
-			Interval:    5 * time.Second,
+			Description:    "Summarize tech news",
+			ScheduleType:   KindRecurring,
+			LocalTime:      "08:00",
+			TimezoneID:     "UTC",
+			RecurrenceRule: "FREQ=DAILY",
 		})
 
 		require.NoError(t, err)
 		assert.Equal(t, KindRecurring, repo.lastSavedJob.Kind())
-		assert.Equal(t, 5*time.Second, repo.lastSavedJob.Interval())
+		assert.Equal(t, "FREQ=DAILY", repo.lastSavedJob.RecurrenceRule())
 	})
 
 	t.Run("invalid_description", func(t *testing.T) {
@@ -171,7 +173,11 @@ func TestService_TenantIsolation(t *testing.T) {
 	t.Run("status_hides_cross_tenant_run", func(t *testing.T) {
 		run, err := NewJobRun(tenantA.TenantID, shared.NewJobID(), 1, scheduledAt)
 		require.NoError(t, err)
-		repo := &fakeRepo{findRun: run}
+		job, err := NewJob(tenantA.TenantID, tenantA.UserID, "test", ScheduleSpec{
+			Type: KindOneOff, ScheduledAtUTC: scheduledAt, TimezoneID: "UTC",
+		})
+		require.NoError(t, err)
+		repo := &fakeRepo{findRun: run, findJob: job}
 		svc := NewService(repo, nil)
 
 		_, err = svc.Status(context.Background(), tenantB, run.ID())
