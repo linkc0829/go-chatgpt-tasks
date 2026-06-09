@@ -16,8 +16,8 @@ import (
 type service interface {
 	Create(ctx context.Context, id Identity, in CreateInput) (*JobRun, error)
 	List(ctx context.Context, id Identity, p shared.Pagination) ([]*JobRun, int64, error)
-	Status(ctx context.Context, id Identity, runID shared.JobRunID) (*JobRun, error)
-	Cancel(ctx context.Context, id Identity, runID shared.JobRunID) (*JobRun, error)
+	Status(ctx context.Context, id Identity, jobID shared.JobID) (*JobRun, error)
+	Cancel(ctx context.Context, id Identity, jobID shared.JobID) ([]*JobRun, error)
 	RunsForJob(ctx context.Context, id Identity, jobID shared.JobID, p shared.Pagination) ([]*JobRun, int64, error)
 	EventsForRun(ctx context.Context, id Identity, runID shared.JobRunID) ([]*RunEvent, error)
 }
@@ -82,15 +82,20 @@ func (h *Handler) list(c *gin.Context) {
 }
 
 func (h *Handler) status(c *gin.Context) {
-	id, runID, ok := h.runID(c)
+	id, ok := h.identity(c)
 	if !ok {
+		return
+	}
+	jobID, err := shared.ParseJobID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
 	defer cancel()
 
-	run, err := h.svc.Status(ctx, id, runID)
+	run, err := h.svc.Status(ctx, id, jobID)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -99,20 +104,25 @@ func (h *Handler) status(c *gin.Context) {
 }
 
 func (h *Handler) cancel(c *gin.Context) {
-	id, runID, ok := h.runID(c)
+	id, ok := h.identity(c)
 	if !ok {
+		return
+	}
+	jobID, err := shared.ParseJobID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	run, err := h.svc.Cancel(ctx, id, runID)
+	runs, err := h.svc.Cancel(ctx, id, jobID)
 	if err != nil {
 		writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, runToHTTPResponse(run))
+	c.JSON(http.StatusOK, CancelJobResponse{JobID: jobID, CancelledRuns: len(runs), RunningRunsUnaffected: true})
 }
 
 func (h *Handler) runsForJob(c *gin.Context) {

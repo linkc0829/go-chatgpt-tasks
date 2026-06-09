@@ -11,9 +11,12 @@ import (
 )
 
 type Querier interface {
+	AdjustDailyLLMCost(ctx context.Context, arg AdjustDailyLLMCostParams) error
 	BeginIdempotency(ctx context.Context, arg BeginIdempotencyParams) (int64, error)
+	CancelPendingJobRuns(ctx context.Context, arg CancelPendingJobRunsParams) ([]CancelPendingJobRunsRow, error)
 	CompleteIdempotency(ctx context.Context, arg CompleteIdempotencyParams) (int64, error)
 	CountActiveRecurringJobs(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountActiveRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountJobRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountJobRunsByJob(ctx context.Context, arg CountJobRunsByJobParams) (int64, error)
 	CountJobsCreatedSince(ctx context.Context, arg CountJobsCreatedSinceParams) (int64, error)
@@ -34,6 +37,8 @@ type Querier interface {
 	ListJobRunsByJob(ctx context.Context, arg ListJobRunsByJobParams) ([]ListJobRunsByJobRow, error)
 	ListRunEventsByRun(ctx context.Context, arg ListRunEventsByRunParams) ([]ListRunEventsByRunRow, error)
 	ListTerminalRecurringRuns(ctx context.Context, arg ListTerminalRecurringRunsParams) ([]ListTerminalRecurringRunsRow, error)
+	ReserveDailyLLMCost(ctx context.Context, arg ReserveDailyLLMCostParams) (int32, error)
+	TryMarkJobRunRunning(ctx context.Context, arg TryMarkJobRunRunningParams) (bool, error)
 	UpdateJobRunStatus(ctx context.Context, arg UpdateJobRunStatusParams) (int64, error)
 	UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) error
 }

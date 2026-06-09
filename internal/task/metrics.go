@@ -13,7 +13,8 @@ type Metrics struct {
 	runs                  *prometheus.CounterVec
 	dur                   prometheus.Histogram
 	dlq                   prometheus.Counter
-	quotaRejections       prometheus.Counter
+	quotaRejections       *prometheus.CounterVec
+	runsDeferred          *prometheus.CounterVec
 	llmLatency            prometheus.Histogram
 	llmTimeouts           prometheus.Counter
 	llmValidationFailures prometheus.Counter
@@ -36,10 +37,18 @@ func NewMetrics(reg *prometheus.Registry, logger *zap.Logger) *Metrics {
 			Name: "task_dlq_total",
 			Help: "Total task runs sent to the dead-letter queue.",
 		}),
-		quotaRejections: prometheus.NewCounter(prometheus.CounterOpts{
+		// tenant_id is intentionally NOT a label: with one tenant per user
+		// (design Decision 7) it is unbounded cardinality, a Prometheus
+		// memory/scrape hazard. Per-tenant attribution stays in structured logs
+		// and, for cost, in the durable tenant_llm_daily_cost table.
+		quotaRejections: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "task_quota_rejections_total",
 			Help: "Total task creation requests rejected by tenant quotas.",
-		}),
+		}, []string{"reason"}),
+		runsDeferred: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "task_runs_deferred_total",
+			Help: "Total run executions deferred for redelivery because a tenant quota was at its limit.",
+		}, []string{"reason"}),
 		llmLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name: "task_llm_latency_seconds",
 			Help: "LLM request latency in seconds.",
@@ -54,11 +63,11 @@ func NewMetrics(reg *prometheus.Registry, logger *zap.Logger) *Metrics {
 		}),
 		llmCostCents: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "task_llm_cost_cents",
-			Help: "Total estimated LLM cost in cents.",
+			Help: "Total estimated LLM cost in cents (per-tenant cost lives in tenant_llm_daily_cost).",
 		}),
 		logger: logger,
 	}
-	reg.MustRegister(m.runs, m.dur, m.dlq, m.quotaRejections, m.llmLatency, m.llmTimeouts, m.llmValidationFailures, m.llmCostCents)
+	reg.MustRegister(m.runs, m.dur, m.dlq, m.quotaRejections, m.runsDeferred, m.llmLatency, m.llmTimeouts, m.llmValidationFailures, m.llmCostCents)
 	return m
 }
 
@@ -99,6 +108,19 @@ func (m *Metrics) recordRun(run *JobRun) {
 	}
 }
 
+func (m *Metrics) recordRunDeferred(tenantID shared.TenantID, reason string) {
+	if m == nil {
+		return
+	}
+	m.runsDeferred.WithLabelValues(reason).Inc()
+	if m.logger != nil {
+		m.logger.Info("run execution deferred by tenant quota",
+			zap.String("tenant_id", tenantID.String()),
+			zap.String("reason", reason),
+		)
+	}
+}
+
 func (m *Metrics) recordDLQ() {
 	if m == nil {
 		return
@@ -110,7 +132,7 @@ func (m *Metrics) RecordQuotaRejection(tenantID shared.TenantID, reason string) 
 	if m == nil {
 		return
 	}
-	m.quotaRejections.Inc()
+	m.quotaRejections.WithLabelValues(reason).Inc()
 	if m.logger != nil {
 		m.logger.Warn("task creation rejected by tenant quota",
 			zap.String("tenant_id", tenantID.String()),

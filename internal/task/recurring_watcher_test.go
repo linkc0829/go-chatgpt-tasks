@@ -20,8 +20,20 @@ type recurringWatcherRepo struct {
 
 func (r *recurringWatcherRepo) SaveJob(context.Context, *Job) error    { return nil }
 func (r *recurringWatcherRepo) SaveRun(context.Context, *JobRun) error { return nil }
+func (r *recurringWatcherRepo) CreateJobWithRun(context.Context, *Job, *JobRun, []*RunEvent) error {
+	return nil
+}
 func (r *recurringWatcherRepo) UpdateRunStatus(context.Context, *JobRun) error {
 	return nil
+}
+func (r *recurringWatcherRepo) PersistRunTransition(context.Context, *JobRun, *RunEvent) error {
+	return nil
+}
+func (r *recurringWatcherRepo) TryMarkRunRunning(context.Context, *JobRun, *RunEvent, int) (bool, error) {
+	return true, nil
+}
+func (r *recurringWatcherRepo) CancelPendingRunsByJob(context.Context, shared.TenantID, shared.JobID) ([]*JobRun, error) {
+	return nil, nil
 }
 func (r *recurringWatcherRepo) FindRunByID(context.Context, shared.JobRunID) (*JobRun, error) {
 	return nil, ErrJobRunNotFound

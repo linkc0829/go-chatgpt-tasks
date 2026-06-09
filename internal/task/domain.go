@@ -34,6 +34,7 @@ const (
 type EventType string
 
 const (
+	EventJobCreated          EventType = "job.created"
 	EventJobRunCreated       EventType = "job_run.created"
 	EventJobRunEnqueued      EventType = "job_run.enqueued"
 	EventJobRunStarted       EventType = "job_run.started"
@@ -357,6 +358,15 @@ func (r *JobRun) MarkQueued() error {
 		return ErrInvalidStatusTransition
 	}
 	r.status = StatusQueued
+	r.updatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *JobRun) MarkPending() error {
+	if r.status != StatusQueued {
+		return ErrInvalidStatusTransition
+	}
+	r.status = StatusPending
 	r.updatedAt = time.Now().UTC()
 	return nil
 }

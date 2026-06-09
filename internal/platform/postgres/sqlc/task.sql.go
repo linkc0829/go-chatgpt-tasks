@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const adjustDailyLLMCost = `-- name: AdjustDailyLLMCost :exec
+UPDATE tenant_llm_daily_cost
+SET cost_cents = cost_cents + $1
+WHERE tenant_id = $2
+  AND cost_date = $3
+`
+
+type AdjustDailyLLMCostParams struct {
+	DeltaCents int32
+	TenantID   pgtype.UUID
+	CostDate   string
+}
+
+func (q *Queries) AdjustDailyLLMCost(ctx context.Context, arg AdjustDailyLLMCostParams) error {
+	_, err := q.db.Exec(ctx, adjustDailyLLMCost, arg.DeltaCents, arg.TenantID, arg.CostDate)
+	return err
+}
+
 const beginIdempotency = `-- name: BeginIdempotency :execrows
 INSERT INTO idempotency_records (
   idempotency_key, job_run_id, handler_name, status, created_at, updated_at
@@ -42,6 +60,86 @@ func (q *Queries) BeginIdempotency(ctx context.Context, arg BeginIdempotencyPara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const cancelPendingJobRuns = `-- name: CancelPendingJobRuns :many
+UPDATE job_runs
+SET status = 'cancelled',
+    completed_at = $1,
+    updated_at = $2
+WHERE tenant_id = $3
+  AND job_id = $4
+  AND status IN ('pending', 'queued', 'retry')
+RETURNING id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
+          error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
+`
+
+type CancelPendingJobRunsParams struct {
+	CompletedAt pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	TenantID    pgtype.UUID
+	JobID       pgtype.UUID
+}
+
+type CancelPendingJobRunsRow struct {
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) CancelPendingJobRuns(ctx context.Context, arg CancelPendingJobRunsParams) ([]CancelPendingJobRunsRow, error) {
+	rows, err := q.db.Query(ctx, cancelPendingJobRuns,
+		arg.CompletedAt,
+		arg.UpdatedAt,
+		arg.TenantID,
+		arg.JobID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CancelPendingJobRunsRow{}
+	for rows.Next() {
+		var i CancelPendingJobRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.JobID,
+			&i.Sequence,
+			&i.Status,
+			&i.ScheduledAt,
+			&i.TimeBucket,
+			&i.Attempts,
+			&i.IdempotencyKey,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.FailedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const completeIdempotency = `-- name: CompleteIdempotency :execrows
@@ -81,6 +179,20 @@ WHERE j.tenant_id = $1
 
 func (q *Queries) CountActiveRecurringJobs(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countActiveRecurringJobs, tenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countActiveRuns = `-- name: CountActiveRuns :one
+SELECT COUNT(*)
+FROM job_runs
+WHERE tenant_id = $1
+  AND status IN ('queued', 'running', 'retry')
+`
+
+func (q *Queries) CountActiveRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveRuns, tenantID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -706,7 +818,7 @@ SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attem
 FROM job_runs
 WHERE tenant_id = $1
   AND job_id = $2
-ORDER BY sequence
+ORDER BY sequence DESC
 LIMIT $4 OFFSET $3
 `
 
@@ -889,6 +1001,77 @@ func (q *Queries) ListTerminalRecurringRuns(ctx context.Context, arg ListTermina
 		return nil, err
 	}
 	return items, nil
+}
+
+const reserveDailyLLMCost = `-- name: ReserveDailyLLMCost :one
+INSERT INTO tenant_llm_daily_cost (tenant_id, cost_date, cost_cents)
+VALUES ($1, $2, $3)
+ON CONFLICT (tenant_id, cost_date) DO UPDATE
+  SET cost_cents = tenant_llm_daily_cost.cost_cents + EXCLUDED.cost_cents
+  WHERE tenant_llm_daily_cost.cost_cents + EXCLUDED.cost_cents <= $4
+RETURNING cost_cents
+`
+
+type ReserveDailyLLMCostParams struct {
+	TenantID   pgtype.UUID
+	CostDate   string
+	CostCents  int32
+	LimitCents int32
+}
+
+func (q *Queries) ReserveDailyLLMCost(ctx context.Context, arg ReserveDailyLLMCostParams) (int32, error) {
+	row := q.db.QueryRow(ctx, reserveDailyLLMCost,
+		arg.TenantID,
+		arg.CostDate,
+		arg.CostCents,
+		arg.LimitCents,
+	)
+	var cost_cents int32
+	err := row.Scan(&cost_cents)
+	return cost_cents, err
+}
+
+const tryMarkJobRunRunning = `-- name: TryMarkJobRunRunning :one
+WITH tenant_lock AS (
+  SELECT pg_advisory_xact_lock(hashtextextended(CAST($1 AS UUID)::text, 0))
+),
+updated AS (
+  UPDATE job_runs r
+  SET status = 'running',
+      started_at = $2,
+      updated_at = $3
+  WHERE r.id = $4
+    AND r.status IN ('queued', 'retry')
+    AND (
+      SELECT COUNT(*)
+      FROM job_runs active_runs, tenant_lock
+      WHERE active_runs.tenant_id = $1
+        AND active_runs.status = 'running'
+    ) < CAST($5 AS BIGINT)
+  RETURNING 1
+)
+SELECT EXISTS(SELECT 1 FROM updated) AS acquired
+`
+
+type TryMarkJobRunRunningParams struct {
+	TenantID  pgtype.UUID
+	StartedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	ID        pgtype.UUID
+	RunLimit  int64
+}
+
+func (q *Queries) TryMarkJobRunRunning(ctx context.Context, arg TryMarkJobRunRunningParams) (bool, error) {
+	row := q.db.QueryRow(ctx, tryMarkJobRunRunning,
+		arg.TenantID,
+		arg.StartedAt,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.RunLimit,
+	)
+	var acquired bool
+	err := row.Scan(&acquired)
+	return acquired, err
 }
 
 const updateJobRunStatus = `-- name: UpdateJobRunStatus :execrows

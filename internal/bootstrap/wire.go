@@ -32,7 +32,8 @@ func wireFeatures(
 	lg *zap.Logger,
 	quotaCfg config.QuotaConfig,
 	llmCfg config.LLMConfig,
-) []task.Runner {
+	taskCfg config.TaskConfig,
+) []runner {
 	api := engine.Group("/api/v1")
 
 	// ------------------------------------------------------------------
@@ -67,10 +68,9 @@ func wireFeatures(
 		MaxCostCents: llmCfg.MaxCostCents, OutputSchema: llmCfg.OutputSchema,
 	}, taskMetrics)
 	exec := task.NewIdempotentExecutor(taskRepo, task.NewIdempotencyStore(pool), baseExec, lg)
-	const workerCount = 3
-	runners := []task.Runner{watcher}
-	for i := 0; i < workerCount; i++ {
-		runners = append(runners, task.NewWorker(fmt.Sprintf("worker-%d", i), taskRepo, taskQueue, exec, lg, taskMetrics))
+	runners := []runner{watcher}
+	for i := 0; i < taskCfg.WorkerCount; i++ {
+		runners = append(runners, task.NewWorker(fmt.Sprintf("worker-%d", i), taskRepo, taskQueue, taskQuota, exec, lg, taskMetrics))
 	}
 	runners = append(runners, task.NewRecurringWatcher(taskRepo, 10*time.Second, lg))
 	return runners

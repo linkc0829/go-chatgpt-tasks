@@ -2,9 +2,10 @@ package task
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -12,36 +13,12 @@ import (
 
 var ErrExecutionInProgress = errors.New("execution already in progress")
 
-type dailyCostCounter struct {
-	mu     sync.Mutex
-	totals map[string]int
-}
-
-func (c *dailyCostCounter) reserve(tenantID string, cost, limit int) (func(int), bool) {
-	key := tenantID + ":" + time.Now().UTC().Format(time.DateOnly)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.totals == nil {
-		c.totals = make(map[string]int)
-	}
-	if limit >= 0 && c.totals[key]+cost > limit {
-		return nil, false
-	}
-	c.totals[key] += cost
-	return func(actual int) {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.totals[key] += actual - cost
-	}, true
-}
-
 type LLMExecutor struct {
 	repo    Repo
 	quota   QuotaRepo
 	client  LLMClient
 	policy  LLMPolicy
 	metrics *Metrics
-	costs   dailyCostCounter
 }
 
 func NewLLMExecutor(repo Repo, quota QuotaRepo, client LLMClient, policy LLMPolicy, metrics *Metrics) *LLMExecutor {
@@ -58,54 +35,107 @@ func (e *LLMExecutor) Execute(ctx context.Context, run *JobRun) error {
 	}
 
 	const model = "fake-default"
-	estimated := EstimateCostCents(model, e.policy.MaxInputTokens, e.policy.MaxOutputTokens)
+	attempts := e.policy.MaxRetries + 1
+	if attempts < 1 {
+		attempts = 1
+	}
+	// Reserve the worst-case budget (every attempt at max tokens) up front so
+	// retries can never exceed the per-job or daily cap. This is intentionally
+	// conservative: a job whose worst-case retry cost exceeds the limit is
+	// deferred even if a single attempt would fit, and the full reservation is
+	// held until the deferred reconcile releases the unused remainder.
+	estimated := EstimateCostCents(model, e.policy.MaxInputTokens, e.policy.MaxOutputTokens) * attempts
+	if e.policy.MaxCostCents >= 0 && estimated > e.policy.MaxCostCents {
+		if eventErr := e.appendEvent(ctx, run, EventQuotaDeferred, map[string]any{"estimated_cost_cents": estimated}); eventErr != nil {
+			return eventErr
+		}
+		return ErrLLMCostExceeded
+	}
 	quota, err := e.quota.Get(ctx, run.TenantID())
 	if err != nil {
 		return fmt.Errorf("get LLM quota: %w", err)
 	}
 	limit := quota.MaxDailyLLMCostCents
-	if e.policy.MaxCostCents >= 0 && e.policy.MaxCostCents < limit {
-		limit = e.policy.MaxCostCents
+	committed, err := e.quota.ReserveDailyCost(ctx, run.TenantID(), estimated, limit)
+	if err != nil {
+		return fmt.Errorf("reserve LLM cost: %w", err)
 	}
-	finalize, ok := e.costs.reserve(run.TenantID().String(), estimated, limit)
-	if !ok {
-		e.appendEvent(ctx, run, EventQuotaDeferred, map[string]any{"estimated_cost_cents": estimated})
+	if !committed {
+		if eventErr := e.appendEvent(ctx, run, EventQuotaDeferred, map[string]any{"estimated_cost_cents": estimated}); eventErr != nil {
+			return eventErr
+		}
 		return ErrLLMCostExceeded
 	}
+	// actualCost accumulates the real spend across attempts; reconcile the
+	// single up-front reservation against it on a detached context so a
+	// per-attempt timeout cannot skip the adjustment.
 	actualCost := 0
-	defer func() { finalize(actualCost) }()
+	defer func() {
+		if delta := actualCost - estimated; delta != 0 {
+			_ = e.quota.AdjustDailyCost(context.WithoutCancel(ctx), run.TenantID(), delta)
+		}
+	}()
 
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		response, err := e.callModel(ctx, model, job.Description())
+		if errors.Is(err, context.DeadlineExceeded) {
+			e.metrics.recordLLMTimeout()
+			lastErr = ErrLLMTimeout
+			continue
+		}
+		if err != nil {
+			lastErr = fmt.Errorf("complete LLM request: %w", err)
+			continue
+		}
+		actualCost += EstimateCostCents(model, response.InputTokens, response.OutputTokens)
+		if verr := ValidateOutput(e.policy.OutputSchema, response.Content); verr != nil {
+			e.metrics.recordLLMValidationFailure()
+			lastErr = verr
+			continue
+		}
+		e.metrics.recordLLMCost(actualCost)
+		return nil
+	}
+
+	// Retry budget exhausted: emit the terminal event for the final failure mode.
+	if errors.Is(lastErr, ErrLLMTimeout) {
+		if err := e.appendEvent(ctx, run, EventLLMTimeout, nil); err != nil {
+			return err
+		}
+		return ErrLLMTimeout
+	}
+	if errors.Is(lastErr, ErrInvalidLLMOutput) {
+		if err := e.appendEvent(ctx, run, EventLLMValidationFailed, map[string]any{"error": lastErr.Error()}); err != nil {
+			return err
+		}
+	}
+	return lastErr
+}
+
+func (e *LLMExecutor) callModel(ctx context.Context, model, prompt string) (LLMResponse, error) {
 	timeout := time.Duration(e.policy.TimeoutSeconds) * time.Second
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	started := time.Now()
 	response, err := e.client.Complete(callCtx, LLMRequest{
 		Model:           model,
-		Prompt:          job.Description(),
+		Prompt:          prompt,
 		MaxInputTokens:  e.policy.MaxInputTokens,
 		MaxOutputTokens: e.policy.MaxOutputTokens,
 	})
 	e.metrics.recordLLMLatency(time.Since(started))
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(callCtx.Err(), context.DeadlineExceeded) {
-		e.metrics.recordLLMTimeout()
-		e.appendEvent(ctx, run, EventLLMTimeout, nil)
-		return ErrLLMTimeout
+		return LLMResponse{}, context.DeadlineExceeded
 	}
-	if err != nil {
-		return fmt.Errorf("complete LLM request: %w", err)
-	}
-	if err := ValidateOutput(e.policy.OutputSchema, response.Content); err != nil {
-		e.metrics.recordLLMValidationFailure()
-		e.appendEvent(ctx, run, EventLLMValidationFailed, map[string]any{"error": err.Error()})
-		return err
-	}
-	actualCost = EstimateCostCents(model, response.InputTokens, response.OutputTokens)
-	e.metrics.recordLLMCost(actualCost)
-	return nil
+	return response, err
 }
 
-func (e *LLMExecutor) appendEvent(ctx context.Context, run *JobRun, eventType EventType, payload map[string]any) {
-	_ = e.repo.AppendEvent(ctx, NewRunEvent(run.TenantID(), run.JobID(), run.ID(), run.Status(), eventType, payload))
+func (e *LLMExecutor) appendEvent(ctx context.Context, run *JobRun, eventType EventType, payload map[string]any) error {
+	if err := e.repo.AppendEvent(ctx, NewRunEvent(run.TenantID(), run.JobID(), run.ID(), run.Status(), eventType, payload)); err != nil {
+		return fmt.Errorf("append %s event: %w", eventType, err)
+	}
+	return nil
 }
 
 type IdempotentExecutor struct {
@@ -155,10 +185,22 @@ func (e *IdempotentExecutor) Execute(ctx context.Context, run *JobRun) error {
 	if err := e.next.Execute(ctx, run); err != nil {
 		return err
 	}
-	if err := e.store.Complete(ctx, run.IdempotencyKey(), ""); err != nil {
+	if err := e.store.Complete(ctx, run.IdempotencyKey(), responseHash(run.IdempotencyKey())); err != nil {
 		return err
 	}
 	return nil
+}
+
+// responseHash derives a deterministic, non-empty audit marker for a completed
+// idempotency record. Handlers do not yet produce persisted output, so the key
+// itself is the stable identifier hashed here.
+//
+// WARNING: this is NOT a fingerprint of the handler's actual output. A future
+// response-caching slice must replace this with a hash of the real result
+// before relying on idempotency_records.response_hash to return cached responses.
+func responseHash(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
 }
 
 type StubExecutor struct {

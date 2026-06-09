@@ -49,13 +49,39 @@ func TestService_CreateEnforcesTenantJobsPerHourQuota(t *testing.T) {
 
 	quotaRepo.EXPECT().Get(gomock.Any(), tenantB.TenantID).Return(quota, nil)
 	quotaRepo.EXPECT().CountJobsSince(gomock.Any(), tenantB.TenantID, gomock.Any()).Return(int64(0), nil)
-	repo.EXPECT().SaveJob(gomock.Any(), gomock.Any()).Return(nil)
-	repo.EXPECT().SaveRun(gomock.Any(), gomock.Any()).Return(nil)
+	quotaRepo.EXPECT().CountActiveRuns(gomock.Any(), tenantB.TenantID).Return(int64(0), nil)
+	repo.EXPECT().CreateJobWithRun(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 	run, err := svc.Create(context.Background(), tenantB, input)
 
 	require.NoError(t, err)
 	assert.Equal(t, tenantB.TenantID, run.TenantID())
+	assert.Equal(t, float64(1), metricValue(t, reg, "task_quota_rejections_total"))
+}
+
+func TestService_CreateEnforcesMaxConcurrentRuns(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	repo := mocks.NewMockRepo(ctrl)
+	quotaRepo := mocks.NewMockQuotaRepo(ctrl)
+	reg := prometheus.NewRegistry()
+	metrics := task.NewMetrics(reg, zap.NewNop())
+	svc := task.NewService(repo, quotaRepo, metrics)
+
+	id := task.Identity{TenantID: shared.NewTenantID(), UserID: shared.NewUserID()}
+	quota := task.Quota{MaxJobsPerHour: 100, MaxActiveRecurring: 20, MaxConcurrentRuns: 2, MaxDailyLLMCostCents: 100}
+	input := task.CreateInput{
+		Description: "concurrent cap",
+		ScheduledAt: time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC),
+	}
+
+	quotaRepo.EXPECT().Get(gomock.Any(), id.TenantID).Return(quota, nil)
+	quotaRepo.EXPECT().CountJobsSince(gomock.Any(), id.TenantID, gomock.Any()).Return(int64(0), nil)
+	quotaRepo.EXPECT().CountActiveRuns(gomock.Any(), id.TenantID).Return(int64(2), nil)
+
+	_, err := svc.Create(context.Background(), id, input)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, task.ErrQuotaExceeded)
 	assert.Equal(t, float64(1), metricValue(t, reg, "task_quota_rejections_total"))
 }
 

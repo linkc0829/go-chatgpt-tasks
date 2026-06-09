@@ -34,6 +34,27 @@ SET status = sqlc.arg(status),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id);
 
+-- name: TryMarkJobRunRunning :one
+WITH tenant_lock AS (
+  SELECT pg_advisory_xact_lock(hashtextextended(CAST(sqlc.arg(tenant_id) AS UUID)::text, 0))
+),
+updated AS (
+  UPDATE job_runs r
+  SET status = 'running',
+      started_at = sqlc.arg(started_at),
+      updated_at = sqlc.arg(updated_at)
+  WHERE r.id = sqlc.arg(id)
+    AND r.status IN ('queued', 'retry')
+    AND (
+      SELECT COUNT(*)
+      FROM job_runs active_runs, tenant_lock
+      WHERE active_runs.tenant_id = sqlc.arg(tenant_id)
+        AND active_runs.status = 'running'
+    ) < CAST(sqlc.arg(run_limit) AS BIGINT)
+  RETURNING 1
+)
+SELECT EXISTS(SELECT 1 FROM updated) AS acquired;
+
 -- name: GetJobRunByID :one
 SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
@@ -71,7 +92,7 @@ SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attem
 FROM job_runs
 WHERE tenant_id = sqlc.arg(tenant_id)
   AND job_id = sqlc.arg(job_id)
-ORDER BY sequence
+ORDER BY sequence DESC
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 
 -- name: CountJobRunsByJob :one
@@ -103,6 +124,17 @@ FROM jobs
 WHERE parent_job_id = sqlc.arg(parent_job_id)
   AND trigger_on_parent_status = sqlc.arg(trigger_on_parent_status)
 ORDER BY created_at;
+
+-- name: CancelPendingJobRuns :many
+UPDATE job_runs
+SET status = 'cancelled',
+    completed_at = sqlc.arg(completed_at),
+    updated_at = sqlc.arg(updated_at)
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND job_id = sqlc.arg(job_id)
+  AND status IN ('pending', 'queued', 'retry')
+RETURNING id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
+          error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at;
 
 -- name: ListTerminalRecurringRuns :many
 SELECT r.id, r.tenant_id, r.job_id, r.sequence, r.scheduled_at,
@@ -151,6 +183,26 @@ WHERE j.tenant_id = sqlc.arg(tenant_id)
     WHERE r.job_id = j.id
       AND r.status NOT IN ('success', 'failed', 'cancelled')
   );
+
+-- name: CountActiveRuns :one
+SELECT COUNT(*)
+FROM job_runs
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND status IN ('queued', 'running', 'retry');
+
+-- name: ReserveDailyLLMCost :one
+INSERT INTO tenant_llm_daily_cost (tenant_id, cost_date, cost_cents)
+VALUES (sqlc.arg(tenant_id), sqlc.arg(cost_date), sqlc.arg(cost_cents))
+ON CONFLICT (tenant_id, cost_date) DO UPDATE
+  SET cost_cents = tenant_llm_daily_cost.cost_cents + EXCLUDED.cost_cents
+  WHERE tenant_llm_daily_cost.cost_cents + EXCLUDED.cost_cents <= sqlc.arg(limit_cents)
+RETURNING cost_cents;
+
+-- name: AdjustDailyLLMCost :exec
+UPDATE tenant_llm_daily_cost
+SET cost_cents = cost_cents + sqlc.arg(delta_cents)
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND cost_date = sqlc.arg(cost_date);
 
 -- name: BeginIdempotency :execrows
 INSERT INTO idempotency_records (

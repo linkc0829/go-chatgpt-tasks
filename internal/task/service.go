@@ -23,14 +23,19 @@ func NewService(repo Repo, quota QuotaRepo, recorders ...QuotaRejectionRecorder)
 }
 
 type CreateInput struct {
-	Description      string
-	ScheduledAt      time.Time
-	Interval         time.Duration
-	ScheduleType     Kind
-	RecurrenceRule   string
-	LocalTime        string
-	TimezoneID       string
-	OriginalUserText string
+	Description           string
+	ScheduledAt           time.Time
+	Interval              time.Duration
+	ScheduleType          Kind
+	RecurrenceRule        string
+	LocalTime             string
+	TimezoneID            string
+	OriginalUserText      string
+	SideEffecting         bool
+	IdempotencyScope      string
+	ParentJobID           *shared.JobID
+	TriggerOnParentStatus Status
+	JobType               JobType
 }
 
 type Identity struct {
@@ -59,16 +64,17 @@ func (s *Service) Create(ctx context.Context, id Identity, in CreateInput) (*Job
 	if err := s.checkQuota(ctx, id.TenantID, schedule.Type); err != nil {
 		return nil, err
 	}
-	if err := s.repo.SaveJob(ctx, j); err != nil {
-		return nil, fmt.Errorf("save job: %w", err)
-	}
 
 	run, err := NewJobRun(id.TenantID, j.ID(), 1, scheduledAt)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.SaveRun(ctx, run); err != nil {
-		return nil, fmt.Errorf("save run: %w", err)
+	events := []*RunEvent{
+		NewRunEvent(id.TenantID, j.ID(), run.ID(), run.Status(), EventJobCreated, nil),
+		NewRunEvent(id.TenantID, j.ID(), run.ID(), run.Status(), EventJobRunCreated, nil),
+	}
+	if err := s.repo.CreateJobWithRun(ctx, j, run, events); err != nil {
+		return nil, fmt.Errorf("create job: %w", err)
 	}
 	run.setSchedule(j)
 	return run, nil
@@ -86,24 +92,31 @@ func (s *Service) List(ctx context.Context, id Identity, p shared.Pagination) ([
 	return runs, total, nil
 }
 
-func (s *Service) Status(ctx context.Context, id Identity, runID shared.JobRunID) (*JobRun, error) {
+func (s *Service) Status(ctx context.Context, id Identity, jobID shared.JobID) (*JobRun, error) {
 	if !id.valid() {
 		return nil, ErrInvalidOwner
 	}
 
-	run, err := s.repo.FindRunByID(ctx, runID)
+	runs, _, err := s.repo.ListRunsByJob(ctx, id.TenantID, jobID, shared.NewPagination(1, 0))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list latest job run: %w", err)
 	}
+	if len(runs) == 0 {
+		return nil, ErrJobRunNotFound
+	}
+	run := runs[0]
 	if run.TenantID() != id.TenantID {
 		return nil, ErrJobRunNotFound
 	}
-	job, err := s.repo.FindJob(ctx, run.JobID())
+	job, err := s.repo.FindJob(ctx, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("find job schedule: %w", err)
 	}
+	if job.TenantID() != id.TenantID {
+		return nil, ErrJobRunNotFound
+	}
 	run.setSchedule(job)
-	children, err := s.findAllChildren(ctx, run.JobID())
+	children, err := s.findAllChildren(ctx, jobID)
 	if err != nil {
 		return nil, err
 	}
@@ -111,29 +124,34 @@ func (s *Service) Status(ctx context.Context, id Identity, runID shared.JobRunID
 	return run, nil
 }
 
-func (s *Service) Cancel(ctx context.Context, id Identity, runID shared.JobRunID) (*JobRun, error) {
+func (s *Service) Cancel(ctx context.Context, id Identity, jobID shared.JobID) ([]*JobRun, error) {
 	if !id.valid() {
 		return nil, ErrInvalidOwner
 	}
 
-	run, err := s.repo.FindRunByID(ctx, runID)
+	job, err := s.repo.FindJob(ctx, jobID)
 	if err != nil {
 		return nil, err
 	}
-	if run.TenantID() != id.TenantID {
-		return nil, ErrJobRunNotFound
+	if job.TenantID() != id.TenantID {
+		return nil, ErrJobNotFound
 	}
-	if err := run.Cancel(); err != nil {
+	cancelled, err := s.cancelJobRuns(ctx, id.TenantID, jobID)
+	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.UpdateRunStatus(ctx, run); err != nil {
-		return nil, fmt.Errorf("update run: %w", err)
-	}
-	_ = s.repo.AppendEvent(ctx, NewRunEvent(run.TenantID(), run.JobID(), run.ID(), StatusCancelled, EventJobCancelled, nil))
-	if err := s.cancelPendingChildren(ctx, run); err != nil {
+	children, err := s.findAllChildren(ctx, jobID)
+	if err != nil {
 		return nil, err
 	}
-	return run, nil
+	for _, child := range children {
+		childRuns, err := s.cancelJobRuns(ctx, id.TenantID, child.ID())
+		if err != nil {
+			return nil, err
+		}
+		cancelled = append(cancelled, childRuns...)
+	}
+	return cancelled, nil
 }
 
 func (s *Service) RunsForJob(ctx context.Context, id Identity, jobID shared.JobID, p shared.Pagination) ([]*JobRun, int64, error) {
@@ -183,6 +201,20 @@ func (s *Service) checkQuota(ctx context.Context, tenantID shared.TenantID, kind
 	if jobs >= int64(quota.MaxJobsPerHour) {
 		return s.rejectQuota(tenantID, "max_jobs_per_hour")
 	}
+
+	// Admission control: count ALL non-terminal runs (queued|running|retry) as
+	// in-flight backlog and reject creation once a tenant is saturated. This is
+	// deliberately broader than the worker's execution slot (which counts only
+	// status='running' — see Worker.acquireRunSlot / TryMarkJobRunRunning): both
+	// derive from quota.MaxConcurrentRuns, but this gate limits how much work a
+	// tenant may have queued, while the worker gate limits how much runs at once.
+	activeRuns, err := s.quota.CountActiveRuns(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("count active runs for quota: %w", err)
+	}
+	if activeRuns >= int64(quota.MaxConcurrentRuns) {
+		return s.rejectQuota(tenantID, "max_concurrent_runs_admission")
+	}
 	if kind != KindRecurring {
 		return nil
 	}
@@ -218,13 +250,18 @@ func scheduleFromInput(in CreateInput) (ScheduleSpec, time.Time, error) {
 	}
 
 	spec := ScheduleSpec{
-		Type:             kind,
-		ScheduledAtUTC:   in.ScheduledAt,
-		RecurrenceRule:   in.RecurrenceRule,
-		LocalTime:        in.LocalTime,
-		TimezoneID:       timezoneID,
-		OriginalUserText: in.OriginalUserText,
-		LegacyInterval:   in.Interval,
+		Type:                  kind,
+		ScheduledAtUTC:        in.ScheduledAt,
+		RecurrenceRule:        in.RecurrenceRule,
+		LocalTime:             in.LocalTime,
+		TimezoneID:            timezoneID,
+		OriginalUserText:      in.OriginalUserText,
+		SideEffecting:         in.SideEffecting,
+		IdempotencyScope:      in.IdempotencyScope,
+		ParentJobID:           in.ParentJobID,
+		TriggerOnParentStatus: in.TriggerOnParentStatus,
+		JobType:               in.JobType,
+		LegacyInterval:        in.Interval,
 	}
 	if kind == KindOneOff {
 		if in.ScheduledAt.IsZero() {
@@ -254,29 +291,18 @@ func scheduleFromInput(in CreateInput) (ScheduleSpec, time.Time, error) {
 	return spec, next, nil
 }
 
-func (s *Service) cancelPendingChildren(ctx context.Context, parent *JobRun) error {
-	children, err := s.findAllChildren(ctx, parent.JobID())
+func (s *Service) cancelJobRuns(ctx context.Context, tenantID shared.TenantID, jobID shared.JobID) ([]*JobRun, error) {
+	runs, err := s.repo.CancelPendingRunsByJob(ctx, tenantID, jobID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for _, child := range children {
-		runs, _, err := s.repo.ListRunsByJob(ctx, parent.TenantID(), child.ID(), shared.NewPagination(100, 0))
-		if err != nil {
-			return fmt.Errorf("list child runs for cancellation: %w", err)
-		}
-		for _, childRun := range runs {
-			if childRun.Status() != StatusPending && childRun.Status() != StatusQueued {
-				continue
-			}
-			if err := childRun.Cancel(); err != nil {
-				return err
-			}
-			if err := s.repo.UpdateRunStatus(ctx, childRun); err != nil {
-				return fmt.Errorf("cancel child run: %w", err)
-			}
+	for _, run := range runs {
+		event := NewRunEvent(run.TenantID(), run.JobID(), run.ID(), StatusCancelled, EventJobCancelled, nil)
+		if err := s.repo.AppendEvent(ctx, event); err != nil {
+			return nil, fmt.Errorf("append job cancelled event: %w", err)
 		}
 	}
-	return nil
+	return runs, nil
 }
 
 func (s *Service) findAllChildren(ctx context.Context, parentJobID shared.JobID) ([]*Job, error) {

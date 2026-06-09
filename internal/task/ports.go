@@ -11,7 +11,13 @@ import (
 type Repo interface {
 	SaveJob(ctx context.Context, j *Job) error
 	SaveRun(ctx context.Context, r *JobRun) error
+	// CreateJobWithRun persists a new job, its first run, and the creation
+	// lifecycle events atomically so a failure cannot leave a run without its
+	// job.created / job_run.created events.
+	CreateJobWithRun(ctx context.Context, j *Job, run *JobRun, events []*RunEvent) error
 	UpdateRunStatus(ctx context.Context, r *JobRun) error
+	PersistRunTransition(ctx context.Context, r *JobRun, event *RunEvent) error
+	TryMarkRunRunning(ctx context.Context, r *JobRun, event *RunEvent, limit int) (acquired bool, err error)
 	FindRunByID(ctx context.Context, id shared.JobRunID) (*JobRun, error)
 	ListRuns(ctx context.Context, tenantID shared.TenantID, p shared.Pagination) ([]*JobRun, int64, error)
 	ListRunsByJob(ctx context.Context, tenantID shared.TenantID, jobID shared.JobID, p shared.Pagination) ([]*JobRun, int64, error)
@@ -19,6 +25,7 @@ type Repo interface {
 	AppendEvent(ctx context.Context, e *RunEvent) error
 	FindDueRuns(ctx context.Context, bucket int64, before time.Time, limit int32) ([]*JobRun, error)
 	FindJob(ctx context.Context, id shared.JobID) (*Job, error)
+	CancelPendingRunsByJob(ctx context.Context, tenantID shared.TenantID, jobID shared.JobID) ([]*JobRun, error)
 	FindChildren(ctx context.Context, jobID shared.JobID, status Status) ([]*Job, error)
 	InsertRunIfAbsent(ctx context.Context, r *JobRun) (created bool, err error)
 	FindTerminalRecurringRuns(ctx context.Context, since time.Time, limit int32) ([]NextRunSpec, error)
@@ -28,6 +35,14 @@ type QuotaRepo interface {
 	Get(ctx context.Context, tenantID shared.TenantID) (Quota, error)
 	CountJobsSince(ctx context.Context, tenantID shared.TenantID, since time.Time) (int64, error)
 	CountActiveRecurring(ctx context.Context, tenantID shared.TenantID) (int64, error)
+	CountActiveRuns(ctx context.Context, tenantID shared.TenantID) (int64, error)
+	// ReserveDailyCost atomically adds costCents to the tenant's running total
+	// for the current UTC day, succeeding only if the new total stays within
+	// limitCents. committed is false when the reservation would exceed the limit.
+	ReserveDailyCost(ctx context.Context, tenantID shared.TenantID, costCents, limitCents int) (committed bool, err error)
+	// AdjustDailyCost applies a signed delta (actual minus estimate) to the
+	// tenant's current-day total to reconcile a prior reservation.
+	AdjustDailyCost(ctx context.Context, tenantID shared.TenantID, deltaCents int) error
 }
 
 type QuotaRejectionRecorder interface {

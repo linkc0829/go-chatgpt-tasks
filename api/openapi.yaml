@@ -115,7 +115,7 @@ paths:
   /api/v1/jobs/{id}:
     get:
       tags: [jobs]
-      summary: Get a scheduled job run
+      summary: Get scheduled job status and latest run
       parameters:
         - $ref: "#/components/parameters/IDPath"
       responses:
@@ -151,7 +151,7 @@ paths:
   /api/v1/jobs/{id}/cancel:
     post:
       tags: [jobs]
-      summary: Cancel a scheduled job run
+      summary: Cancel all pending runs for a scheduled job
       parameters:
         - $ref: "#/components/parameters/IDPath"
       responses:
@@ -159,7 +159,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/RunResponse" }
+              schema: { $ref: "#/components/schemas/CancelJobResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -258,6 +258,18 @@ components:
         local_time: { type: string, example: "08:00" }
         timezone_id: { type: string, example: "Asia/Taipei" }
         original_user_text: { type: string }
+        side_effecting: { type: boolean, default: false }
+        idempotency_scope: { type: string, default: job_run }
+        parent_job_id: { type: string, format: uuid }
+        trigger_on_parent_status: { type: string, enum: [success, failed, cancelled] }
+        job_type: { type: string, enum: [generic_llm], default: generic_llm }
+
+    CancelJobResponse:
+      type: object
+      properties:
+        job_id: { type: string, format: uuid }
+        cancelled_runs: { type: integer }
+        running_runs_unaffected: { type: boolean }
 
     RunResponse:
       type: object

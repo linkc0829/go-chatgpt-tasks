@@ -4,7 +4,9 @@
       "Bash(~/go/bin/sqlc generate *)",
       "Bash(git add *)",
       "Bash(where.exe docker *)",
-      "Bash(docker --version)"
+      "Bash(docker --version)",
+      "Bash(rg -n \"EventQuotaRejected|EventQuotaDeferred|quota.rejected|quota.deferred\" internal/task/*.go)",
+      "Bash(rg -n \"CREATE TABLE jobs\" -A 25 migrations/0001_*.up.sql)"
     ]
   }
 }

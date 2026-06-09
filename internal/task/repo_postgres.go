@@ -16,13 +16,14 @@ import (
 )
 
 type PostgresRepo struct {
-	q *sqlc.Queries
+	pool *pgxpool.Pool
+	q    *sqlc.Queries
 }
 
 var _ Repo = (*PostgresRepo)(nil)
 
 func NewPostgresRepo(pool *pgxpool.Pool) *PostgresRepo {
-	return &PostgresRepo{q: sqlc.New(pool)}
+	return &PostgresRepo{pool: pool, q: sqlc.New(pool)}
 }
 
 func (r *PostgresRepo) SaveJob(ctx context.Context, j *Job) error {
@@ -39,6 +40,34 @@ func (r *PostgresRepo) SaveRun(ctx context.Context, run *JobRun) error {
 	return nil
 }
 
+func (r *PostgresRepo) CreateJobWithRun(ctx context.Context, j *Job, run *JobRun, events []*RunEvent) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin create job: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := r.q.WithTx(tx)
+	if err := q.InsertJob(ctx, jobToInsertParams(j)); err != nil {
+		return fmt.Errorf("insert job: %w", err)
+	}
+	if err := q.InsertJobRun(ctx, jobRunToInsertParams(run)); err != nil {
+		return fmt.Errorf("insert job run: %w", err)
+	}
+	for _, event := range events {
+		params, err := runEventToInsertParams(event)
+		if err != nil {
+			return err
+		}
+		if err := q.InsertRunEvent(ctx, params); err != nil {
+			return fmt.Errorf("insert run event: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit create job: %w", err)
+	}
+	return nil
+}
+
 func (r *PostgresRepo) UpdateRunStatus(ctx context.Context, run *JobRun) error {
 	rows, err := r.q.UpdateJobRunStatus(ctx, jobRunToUpdateStatusParams(run))
 	if err != nil {
@@ -48,6 +77,66 @@ func (r *PostgresRepo) UpdateRunStatus(ctx context.Context, run *JobRun) error {
 		return ErrJobRunNotFound
 	}
 	return nil
+}
+
+func (r *PostgresRepo) PersistRunTransition(ctx context.Context, run *JobRun, event *RunEvent) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin run transition: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := r.q.WithTx(tx)
+	rows, err := q.UpdateJobRunStatus(ctx, jobRunToUpdateStatusParams(run))
+	if err != nil {
+		return fmt.Errorf("update job run transition: %w", err)
+	}
+	if rows == 0 {
+		return ErrJobRunNotFound
+	}
+	params, err := runEventToInsertParams(event)
+	if err != nil {
+		return err
+	}
+	if err := q.InsertRunEvent(ctx, params); err != nil {
+		return fmt.Errorf("insert run transition event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit run transition: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepo) TryMarkRunRunning(ctx context.Context, run *JobRun, event *RunEvent, limit int) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin run slot claim: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := r.q.WithTx(tx)
+	acquired, err := q.TryMarkJobRunRunning(ctx, sqlc.TryMarkJobRunRunningParams{
+		TenantID:  postgres.UUIDToPg(uuid.UUID(run.TenantID())),
+		StartedAt: postgres.TimeToPg(run.StartedAt()),
+		UpdatedAt: postgres.TimeToPg(run.UpdatedAt()),
+		ID:        postgres.UUIDToPg(uuid.UUID(run.ID())),
+		RunLimit:  int64(limit),
+	})
+	if err != nil {
+		return false, fmt.Errorf("try mark job run running: %w", err)
+	}
+	if !acquired {
+		return false, nil
+	}
+	params, err := runEventToInsertParams(event)
+	if err != nil {
+		return false, err
+	}
+	if err := q.InsertRunEvent(ctx, params); err != nil {
+		return false, fmt.Errorf("insert job run started event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit run slot claim: %w", err)
+	}
+	return acquired, nil
 }
 
 func (r *PostgresRepo) FindRunByID(ctx context.Context, id shared.JobRunID) (*JobRun, error) {
@@ -176,6 +265,28 @@ func (r *PostgresRepo) FindJob(ctx context.Context, id shared.JobID) (*Job, erro
 		return nil, fmt.Errorf("query job: %w", err)
 	}
 	return jobFromSqlc(row), nil
+}
+
+func (r *PostgresRepo) CancelPendingRunsByJob(
+	ctx context.Context,
+	tenantID shared.TenantID,
+	jobID shared.JobID,
+) ([]*JobRun, error) {
+	now := time.Now().UTC()
+	rows, err := r.q.CancelPendingJobRuns(ctx, sqlc.CancelPendingJobRunsParams{
+		CompletedAt: postgres.TimeToPg(now),
+		UpdatedAt:   postgres.TimeToPg(now),
+		TenantID:    postgres.UUIDToPg(uuid.UUID(tenantID)),
+		JobID:       postgres.UUIDToPg(uuid.UUID(jobID)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cancel pending job runs: %w", err)
+	}
+	out := make([]*JobRun, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, jobRunFromCancelPendingRow(row))
+	}
+	return out, nil
 }
 
 func (r *PostgresRepo) FindChildren(ctx context.Context, jobID shared.JobID, status Status) ([]*Job, error) {

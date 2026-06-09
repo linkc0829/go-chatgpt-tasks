@@ -20,6 +20,7 @@ type Config struct {
 	Logger LoggerConfig
 	Quota  QuotaConfig
 	LLM    LLMConfig
+	Task   TaskConfig
 }
 
 type AppConfig struct {
@@ -77,6 +78,10 @@ type LLMConfig struct {
 	OutputSchema    string `mapstructure:"output_schema"`
 }
 
+type TaskConfig struct {
+	WorkerCount int `mapstructure:"worker_count"`
+}
+
 // Load reads config from env (with .env fallback). Env vars are upper-cased
 // and underscored, e.g. APP_ENV, POSTGRES_DSN.
 func Load() (*Config, error) {
@@ -119,6 +124,7 @@ func load(requireJWT bool) (*Config, error) {
 	v.SetDefault("llm.max_output_tokens", 1024)
 	v.SetDefault("llm.max_cost_cents", 100)
 	v.SetDefault("llm.output_schema", "{}")
+	v.SetDefault("task.worker_count", 3)
 
 	// Env mapping: APP_ENV → app.env
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -155,6 +161,7 @@ func load(requireJWT bool) (*Config, error) {
 		"llm.max_output_tokens":           "LLM_MAX_OUTPUT_TOKENS",
 		"llm.max_cost_cents":              "LLM_MAX_COST_CENTS",
 		"llm.output_schema":               "LLM_OUTPUT_SCHEMA",
+		"task.worker_count":               "TASK_WORKER_COUNT",
 	}
 	for k, env := range binds {
 		_ = v.BindEnv(k, env)
@@ -191,6 +198,9 @@ func (c *Config) validate(requireJWT bool) error {
 	}
 	if requireJWT && c.JWT.Secret == "" {
 		return fmt.Errorf("JWT_SECRET is required")
+	}
+	if c.Task.WorkerCount < 1 {
+		return fmt.Errorf("TASK_WORKER_COUNT must be greater than zero")
 	}
 	return nil
 }

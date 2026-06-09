@@ -7,14 +7,19 @@ import (
 )
 
 type CreateJobRequest struct {
-	Description              string `json:"description" binding:"required,min=1"`
-	ScheduledAt              string `json:"scheduled_at,omitempty"`
-	RecurringIntervalSeconds int64  `json:"recurring_interval_seconds,omitempty" binding:"omitempty,min=1"`
-	ScheduleType             Kind   `json:"schedule_type,omitempty"`
-	RecurrenceRule           string `json:"recurrence_rule,omitempty"`
-	LocalTime                string `json:"local_time,omitempty"`
-	TimezoneID               string `json:"timezone_id,omitempty"`
-	OriginalUserText         string `json:"original_user_text,omitempty"`
+	Description              string        `json:"description" binding:"required,min=1"`
+	ScheduledAt              string        `json:"scheduled_at,omitempty"`
+	RecurringIntervalSeconds int64         `json:"recurring_interval_seconds,omitempty" binding:"omitempty,min=1"`
+	ScheduleType             Kind          `json:"schedule_type,omitempty"`
+	RecurrenceRule           string        `json:"recurrence_rule,omitempty"`
+	LocalTime                string        `json:"local_time,omitempty"`
+	TimezoneID               string        `json:"timezone_id,omitempty"`
+	OriginalUserText         string        `json:"original_user_text,omitempty"`
+	SideEffecting            bool          `json:"side_effecting,omitempty"`
+	IdempotencyScope         string        `json:"idempotency_scope,omitempty"`
+	ParentJobID              *shared.JobID `json:"parent_job_id,omitempty"`
+	TriggerOnParentStatus    Status        `json:"trigger_on_parent_status,omitempty"`
+	JobType                  JobType       `json:"job_type,omitempty"`
 }
 
 func (r CreateJobRequest) toInput() (CreateInput, error) {
@@ -27,14 +32,19 @@ func (r CreateJobRequest) toInput() (CreateInput, error) {
 		}
 	}
 	return CreateInput{
-		Description:      r.Description,
-		ScheduledAt:      scheduledAt,
-		Interval:         time.Duration(r.RecurringIntervalSeconds) * time.Second,
-		ScheduleType:     r.ScheduleType,
-		RecurrenceRule:   r.RecurrenceRule,
-		LocalTime:        r.LocalTime,
-		TimezoneID:       r.TimezoneID,
-		OriginalUserText: r.OriginalUserText,
+		Description:           r.Description,
+		ScheduledAt:           scheduledAt,
+		Interval:              time.Duration(r.RecurringIntervalSeconds) * time.Second,
+		ScheduleType:          r.ScheduleType,
+		RecurrenceRule:        r.RecurrenceRule,
+		LocalTime:             r.LocalTime,
+		TimezoneID:            r.TimezoneID,
+		OriginalUserText:      r.OriginalUserText,
+		SideEffecting:         r.SideEffecting,
+		IdempotencyScope:      r.IdempotencyScope,
+		ParentJobID:           r.ParentJobID,
+		TriggerOnParentStatus: r.TriggerOnParentStatus,
+		JobType:               r.JobType,
 	}, nil
 }
 
@@ -93,6 +103,12 @@ type RunEventResponse struct {
 
 type ListEventsResponse struct {
 	Events []RunEventResponse `json:"events"`
+}
+
+type CancelJobResponse struct {
+	JobID                 shared.JobID `json:"job_id"`
+	CancelledRuns         int          `json:"cancelled_runs"`
+	RunningRunsUnaffected bool         `json:"running_runs_unaffected"`
 }
 
 func runToHTTPResponse(run *JobRun) RunResponse {

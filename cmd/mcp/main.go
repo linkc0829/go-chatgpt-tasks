@@ -113,60 +113,34 @@ func bindRegistry(s *sdkmcp.Server, reg *taskmcp.Registry) {
 	handlers := reg.Handlers()
 
 	sdkmcp.AddTool(s, &sdkmcp.Tool{Name: "task.create", Description: "Create a scheduled task run."},
-		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskCreateInput) (*sdkmcp.CallToolResult, map[string]any, error) {
+		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskmcp.CreateArgs) (*sdkmcp.CallToolResult, map[string]any, error) {
 			return callRegistryTool(ctx, handlers["task.create"], in)
 		})
 
 	sdkmcp.AddTool(s, &sdkmcp.Tool{Name: "task.list", Description: "List scheduled task runs."},
-		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskListInput) (*sdkmcp.CallToolResult, map[string]any, error) {
+		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskmcp.ListArgs) (*sdkmcp.CallToolResult, map[string]any, error) {
 			return callRegistryTool(ctx, handlers["task.list"], in)
 		})
 
 	sdkmcp.AddTool(s, &sdkmcp.Tool{Name: "task.status", Description: "Get a scheduled task run status."},
-		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskRunRefInput) (*sdkmcp.CallToolResult, map[string]any, error) {
+		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskmcp.RunRef) (*sdkmcp.CallToolResult, map[string]any, error) {
 			return callRegistryTool(ctx, handlers["task.status"], in)
 		})
 
 	sdkmcp.AddTool(s, &sdkmcp.Tool{Name: "task.cancel", Description: "Cancel a scheduled task run."},
-		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskRunRefInput) (*sdkmcp.CallToolResult, map[string]any, error) {
+		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskmcp.RunRef) (*sdkmcp.CallToolResult, map[string]any, error) {
 			return callRegistryTool(ctx, handlers["task.cancel"], in)
 		})
 
 	sdkmcp.AddTool(s, &sdkmcp.Tool{Name: "task.runs", Description: "List runs for a scheduled task."},
-		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskRunsInput) (*sdkmcp.CallToolResult, map[string]any, error) {
+		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskmcp.JobRef) (*sdkmcp.CallToolResult, map[string]any, error) {
 			return callRegistryTool(ctx, handlers["task.runs"], in)
 		})
 
 	sdkmcp.AddTool(s, &sdkmcp.Tool{Name: "task.events", Description: "List lifecycle events for a task run."},
-		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskRunRefInput) (*sdkmcp.CallToolResult, map[string]any, error) {
+		func(ctx context.Context, _ *sdkmcp.CallToolRequest, in taskmcp.RunRef) (*sdkmcp.CallToolResult, map[string]any, error) {
 			return callRegistryTool(ctx, handlers["task.events"], in)
 		})
-}
-
-type taskCreateInput struct {
-	Description             string `json:"description" jsonschema:"Task description"`
-	ScheduledAt             string `json:"scheduled_at,omitempty" jsonschema:"RFC3339 scheduled time for one-off jobs"`
-	RecurringIntervalSecond int64  `json:"recurring_interval_seconds,omitempty" jsonschema:"Optional recurring interval in seconds"`
-	ScheduleType            string `json:"schedule_type,omitempty" jsonschema:"one_off or recurring"`
-	RecurrenceRule          string `json:"recurrence_rule,omitempty" jsonschema:"FREQ=DAILY or FREQ=WEEKLY with optional INTERVAL"`
-	LocalTime               string `json:"local_time,omitempty" jsonschema:"Local wall-clock time in HH:MM format"`
-	TimezoneID              string `json:"timezone_id,omitempty" jsonschema:"IANA timezone identifier"`
-	OriginalUserText        string `json:"original_user_text,omitempty" jsonschema:"Original scheduling request text"`
-}
-
-type taskListInput struct {
-	Limit  int `json:"limit,omitempty" jsonschema:"Page size, default 20"`
-	Offset int `json:"offset,omitempty" jsonschema:"Page offset, default 0"`
-}
-
-type taskRunRefInput struct {
-	JobID string `json:"job_id" jsonschema:"Job run ID returned by task.create or task.list"`
-}
-
-type taskRunsInput struct {
-	JobID  string `json:"job_id" jsonschema:"Job ID returned as job_id by task.create or task.list"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"Page size, default 20"`
-	Offset int    `json:"offset,omitempty" jsonschema:"Page offset, default 0"`
 }
 
 func callRegistryTool(

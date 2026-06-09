@@ -70,6 +70,12 @@ type RunEvent struct {
 	EventPayload []byte
 }
 
+type TenantLlmDailyCost struct {
+	TenantID  pgtype.UUID
+	CostDate  string
+	CostCents int32
+}
+
 type TenantQuota struct {
 	TenantID               pgtype.UUID
 	MaxJobsPerHour         int32

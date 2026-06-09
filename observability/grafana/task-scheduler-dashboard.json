@@ -1,0 +1,57 @@
+{
+  "title": "Task Scheduler",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Run Rate by Status",
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(task_runs_total[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Cost (cents/hour)",
+      "description": "Aggregate LLM cost. Per-tenant cost is intentionally not a metric label (unbounded cardinality); query the tenant_llm_daily_cost table for per-tenant breakdown.",
+      "targets": [
+        {
+          "expr": "increase(task_llm_cost_cents[1h])",
+          "legendFormat": "cost cents"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Quota Rejections by Reason",
+      "targets": [
+        {
+          "expr": "sum by (reason) (increase(task_quota_rejections_total[10m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "type": "stat",
+      "title": "DLQ Total",
+      "targets": [
+        {
+          "expr": "task_dlq_total",
+          "legendFormat": "DLQ"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    }
+  ]
+}

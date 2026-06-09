@@ -148,6 +148,27 @@ func jobRunFromDueRow(r sqlc.FindDueJobRunsRow) *JobRun {
 	)
 }
 
+func jobRunFromCancelPendingRow(r sqlc.CancelPendingJobRunsRow) *JobRun {
+	return rehydrateJobRun(
+		shared.JobRunID(postgres.PgToUUID(r.ID)),
+		shared.TenantID(postgres.PgToUUID(r.TenantID)),
+		shared.JobID(postgres.PgToUUID(r.JobID)),
+		int(r.Sequence),
+		Status(r.Status),
+		postgres.PgToTime(r.ScheduledAt),
+		r.TimeBucket,
+		int(r.Attempts),
+		r.IdempotencyKey,
+		stringValue(r.ErrorCode),
+		stringValue(r.ErrorMessage),
+		postgres.PgToTime(r.StartedAt),
+		postgres.PgToTime(r.CompletedAt),
+		postgres.PgToTime(r.FailedAt),
+		postgres.PgToTime(r.CreatedAt),
+		postgres.PgToTime(r.UpdatedAt),
+	)
+}
+
 func jobRunFromJobRow(r sqlc.ListJobRunsByJobRow) *JobRun {
 	return rehydrateJobRun(
 		shared.JobRunID(postgres.PgToUUID(r.ID)),

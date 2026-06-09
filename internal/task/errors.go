@@ -16,4 +16,5 @@ var (
 	ErrInvalidLLMOutput        = errors.New("invalid LLM output")
 	ErrLLMTimeout              = errors.New("LLM request timed out")
 	ErrLLMCostExceeded         = errors.New("LLM cost budget exceeded")
+	ErrWorkerStalled           = errors.New("worker stalled before completion")
 )

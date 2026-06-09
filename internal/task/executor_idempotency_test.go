@@ -41,7 +41,7 @@ func TestIdempotentExecutor_DuplicateSideEffectRunsOnce(t *testing.T) {
 	repo.EXPECT().FindJob(gomock.Any(), job.ID()).Return(job, nil).Times(2)
 	store.EXPECT().Begin(gomock.Any(), run.IdempotencyKey(), "task.default", run.ID()).Return(true, nil)
 	handler.EXPECT().Execute(gomock.Any(), run).Return(nil).Times(1)
-	store.EXPECT().Complete(gomock.Any(), run.IdempotencyKey(), "").Return(nil)
+	store.EXPECT().Complete(gomock.Any(), run.IdempotencyKey(), gomock.Any()).Return(nil)
 
 	store.EXPECT().Begin(gomock.Any(), run.IdempotencyKey(), "task.default", run.ID()).Return(false, nil)
 	store.EXPECT().Lookup(gomock.Any(), run.IdempotencyKey()).Return(task.IdempotencyRecord{
