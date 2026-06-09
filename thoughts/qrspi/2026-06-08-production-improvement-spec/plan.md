@@ -349,7 +349,7 @@ Read-only jobs skip the store entirely.
 - [x] `make verify` passes
 - [x] failure test: same `JobRunMsg` processed twice → fake side-effecting handler's side effect runs once; second pass logs/events a duplicate
 #### Manual
-- [ ] `make migrate-up` applies `0006`; `idempotency_records` exists
+- [x] `make migrate-up` applies `0006`; `idempotency_records` exists
 
 ---
 
