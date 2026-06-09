@@ -14,10 +14,15 @@ type workerRepo struct {
 	run           *JobRun
 	updatedStatus []Status
 	events        []*RunEvent
+	children      []*Job
+	savedRuns     []*JobRun
 }
 
-func (r *workerRepo) SaveJob(context.Context, *Job) error    { return nil }
-func (r *workerRepo) SaveRun(context.Context, *JobRun) error { return nil }
+func (r *workerRepo) SaveJob(context.Context, *Job) error { return nil }
+func (r *workerRepo) SaveRun(_ context.Context, run *JobRun) error {
+	r.savedRuns = append(r.savedRuns, run)
+	return nil
+}
 func (r *workerRepo) UpdateRunStatus(_ context.Context, run *JobRun) error {
 	r.updatedStatus = append(r.updatedStatus, run.Status())
 	return nil
@@ -46,6 +51,9 @@ func (r *workerRepo) FindDueRuns(context.Context, int64, time.Time, int32) ([]*J
 }
 func (r *workerRepo) FindJob(context.Context, shared.JobID) (*Job, error) {
 	return nil, ErrJobNotFound
+}
+func (r *workerRepo) FindChildren(context.Context, shared.JobID, Status) ([]*Job, error) {
+	return r.children, nil
 }
 func (r *workerRepo) InsertRunIfAbsent(context.Context, *JobRun) (bool, error) {
 	return false, nil
@@ -115,6 +123,56 @@ func TestWorker_processSuccessMarksSuccessAndAcks(t *testing.T) {
 	}
 	if got := exec.calls; got != 1 {
 		t.Errorf("Worker.process(success) Execute calls = %d, want 1", got)
+	}
+}
+
+func TestWorker_processSuccessCreatesAndEnqueuesMatchingChild(t *testing.T) {
+	parent := newQueuedWorkerRun(t)
+	parentID := parent.JobID()
+	child, err := NewJob(parent.TenantID(), shared.NewUserID(), "child", ScheduleSpec{
+		Type:                  KindOneOff,
+		ScheduledAtUTC:        time.Now().UTC(),
+		TimezoneID:            "UTC",
+		ParentJobID:           &parentID,
+		TriggerOnParentStatus: StatusSuccess,
+	})
+	if err != nil {
+		t.Fatalf("NewJob(child) error = %v", err)
+	}
+	repo := &workerRepo{run: parent, children: []*Job{child}}
+	queue := &workerQueue{}
+	worker := NewWorker("worker-test", repo, queue, &workerExecutor{}, zap.NewNop(), nil)
+
+	worker.process(context.Background(), queuedMessageFor(parent, "child-1"))
+
+	if got := len(repo.savedRuns); got != 1 {
+		t.Fatalf("Worker.process(success) saved child runs = %d, want 1", got)
+	}
+	childRun := repo.savedRuns[0]
+	if got, want := childRun.JobID(), child.ID(); got != want {
+		t.Errorf("child run job_id = %s, want %s", got, want)
+	}
+	if got, want := childRun.Status(), StatusQueued; got != want {
+		t.Errorf("child run status = %q, want %q", got, want)
+	}
+	if got := len(queue.enqueued); got != 1 {
+		t.Fatalf("Worker.process(success) enqueued child runs = %d, want 1", got)
+	}
+	if want := EventChildEnqueued; repo.events[len(repo.events)-1].EventType() != want {
+		t.Errorf("last event = %q, want %q", repo.events[len(repo.events)-1].EventType(), want)
+	}
+}
+
+func TestWorker_processNonTerminalDoesNotCreateChild(t *testing.T) {
+	parent := newQueuedWorkerRun(t)
+	repo := &workerRepo{run: parent}
+	queue := &workerQueue{}
+	worker := NewWorker("worker-test", repo, queue, &workerExecutor{err: errors.New("retry")}, zap.NewNop(), nil)
+
+	worker.process(context.Background(), queuedMessageFor(parent, "child-2"))
+
+	if got := len(repo.savedRuns); got != 0 {
+		t.Errorf("Worker.process(retry) saved child runs = %d, want 0", got)
 	}
 }
 

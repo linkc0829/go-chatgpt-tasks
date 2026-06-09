@@ -29,6 +29,31 @@ func jobFromSqlc(r sqlc.GetJobByIDRow) *Job {
 		stringValue(r.OriginalUserText),
 		r.SideEffecting,
 		r.IdempotencyScope,
+		jobIDPtrFromPg(r.ParentJobID),
+		Status(stringValue(r.TriggerOnParentStatus)),
+		postgres.PgToTime(r.CreatedAt),
+		postgres.PgToTime(r.UpdatedAt),
+	)
+}
+
+func jobFromChildRow(r sqlc.FindChildJobsRow) *Job {
+	return rehydrateJob(
+		shared.JobID(postgres.PgToUUID(r.ID)),
+		shared.TenantID(postgres.PgToUUID(r.TenantID)),
+		shared.UserID(postgres.PgToUUID(r.UserID)),
+		Kind(r.Kind),
+		r.Description,
+		time.Duration(r.IntervalSeconds)*time.Second,
+		Kind(r.ScheduleType),
+		postgres.PgToTime(r.ScheduledAtUtc),
+		stringValue(r.RecurrenceRule),
+		stringValue(r.LocalTime),
+		r.TimezoneID,
+		stringValue(r.OriginalUserText),
+		r.SideEffecting,
+		r.IdempotencyScope,
+		jobIDPtrFromPg(r.ParentJobID),
+		Status(stringValue(r.TriggerOnParentStatus)),
 		postgres.PgToTime(r.CreatedAt),
 		postgres.PgToTime(r.UpdatedAt),
 	)
@@ -36,22 +61,24 @@ func jobFromSqlc(r sqlc.GetJobByIDRow) *Job {
 
 func jobToInsertParams(j *Job) sqlc.InsertJobParams {
 	return sqlc.InsertJobParams{
-		ID:               postgres.UUIDToPg(uuid.UUID(j.ID())),
-		TenantID:         postgres.UUIDToPg(uuid.UUID(j.TenantID())),
-		UserID:           postgres.UUIDToPg(uuid.UUID(j.UserID())),
-		Kind:             string(j.Kind()),
-		Description:      j.Description(),
-		IntervalSeconds:  int64(j.Interval() / time.Second),
-		ScheduleType:     string(j.ScheduleType()),
-		ScheduledAtUtc:   nullableTimeToPg(j.ScheduledAtUTC()),
-		RecurrenceRule:   stringPtr(j.RecurrenceRule()),
-		LocalTime:        stringPtr(j.LocalTime()),
-		TimezoneID:       j.TimezoneID(),
-		OriginalUserText: stringPtr(j.OriginalUserText()),
-		SideEffecting:    j.SideEffecting(),
-		IdempotencyScope: j.IdempotencyScope(),
-		CreatedAt:        postgres.TimeToPg(j.CreatedAt()),
-		UpdatedAt:        postgres.TimeToPg(j.UpdatedAt()),
+		ID:                    postgres.UUIDToPg(uuid.UUID(j.ID())),
+		TenantID:              postgres.UUIDToPg(uuid.UUID(j.TenantID())),
+		UserID:                postgres.UUIDToPg(uuid.UUID(j.UserID())),
+		Kind:                  string(j.Kind()),
+		Description:           j.Description(),
+		IntervalSeconds:       int64(j.Interval() / time.Second),
+		ScheduleType:          string(j.ScheduleType()),
+		ScheduledAtUtc:        nullableTimeToPg(j.ScheduledAtUTC()),
+		RecurrenceRule:        stringPtr(j.RecurrenceRule()),
+		LocalTime:             stringPtr(j.LocalTime()),
+		TimezoneID:            j.TimezoneID(),
+		OriginalUserText:      stringPtr(j.OriginalUserText()),
+		SideEffecting:         j.SideEffecting(),
+		IdempotencyScope:      j.IdempotencyScope(),
+		ParentJobID:           jobIDPtrToPg(j.ParentJobID()),
+		TriggerOnParentStatus: stringPtr(string(j.TriggerOnParentStatus())),
+		CreatedAt:             postgres.TimeToPg(j.CreatedAt()),
+		UpdatedAt:             postgres.TimeToPg(j.UpdatedAt()),
 	}
 }
 
@@ -241,6 +268,21 @@ func nullableTimeToPg(t time.Time) pgtype.Timestamptz {
 		return pgtype.Timestamptz{}
 	}
 	return postgres.TimeToPg(t)
+}
+
+func jobIDPtrToPg(id *shared.JobID) pgtype.UUID {
+	if id == nil {
+		return pgtype.UUID{}
+	}
+	return postgres.UUIDToPg(uuid.UUID(*id))
+}
+
+func jobIDPtrFromPg(id pgtype.UUID) *shared.JobID {
+	if !id.Valid {
+		return nil
+	}
+	out := shared.JobID(postgres.PgToUUID(id))
+	return &out
 }
 
 func payloadToJSON(payload map[string]any) ([]byte, error) {

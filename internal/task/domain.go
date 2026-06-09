@@ -40,6 +40,7 @@ const (
 	EventJobRunDLQ         EventType = "job_run.dlq"
 	EventJobCancelled      EventType = "job.cancelled"
 	EventDuplicateDetected EventType = "job_run.duplicate_detected"
+	EventChildEnqueued     EventType = "child_job.enqueued"
 )
 
 type Quota struct {
@@ -50,34 +51,38 @@ type Quota struct {
 }
 
 type ScheduleSpec struct {
-	Type             Kind
-	ScheduledAtUTC   time.Time
-	RecurrenceRule   string
-	LocalTime        string
-	TimezoneID       string
-	OriginalUserText string
-	LegacyInterval   time.Duration
-	SideEffecting    bool
-	IdempotencyScope string
+	Type                  Kind
+	ScheduledAtUTC        time.Time
+	RecurrenceRule        string
+	LocalTime             string
+	TimezoneID            string
+	OriginalUserText      string
+	LegacyInterval        time.Duration
+	SideEffecting         bool
+	IdempotencyScope      string
+	ParentJobID           *shared.JobID
+	TriggerOnParentStatus Status
 }
 
 type Job struct {
-	id               shared.JobID
-	tenantID         shared.TenantID
-	userID           shared.UserID
-	kind             Kind
-	description      string
-	interval         time.Duration
-	scheduleType     Kind
-	scheduledAtUTC   time.Time
-	recurrenceRule   string
-	localTime        string
-	timezoneID       string
-	originalUserText string
-	sideEffecting    bool
-	idempotencyScope string
-	createdAt        time.Time
-	updatedAt        time.Time
+	id                    shared.JobID
+	tenantID              shared.TenantID
+	userID                shared.UserID
+	kind                  Kind
+	description           string
+	interval              time.Duration
+	scheduleType          Kind
+	scheduledAtUTC        time.Time
+	recurrenceRule        string
+	localTime             string
+	timezoneID            string
+	originalUserText      string
+	sideEffecting         bool
+	idempotencyScope      string
+	parentJobID           *shared.JobID
+	triggerOnParentStatus Status
+	createdAt             time.Time
+	updatedAt             time.Time
 }
 
 type JobRun struct {
@@ -101,6 +106,8 @@ type JobRun struct {
 	localTime      string
 	timezoneID     string
 	idempotencyKey string
+	parentJobID    *shared.JobID
+	childJobIDs    []shared.JobID
 }
 
 type RunEvent struct {
@@ -166,25 +173,33 @@ func NewJob(tenantID shared.TenantID, userID shared.UserID, description string, 
 	if schedule.IdempotencyScope == "" {
 		schedule.IdempotencyScope = "job_run"
 	}
+	if schedule.ParentJobID != nil && !isTerminalStatus(schedule.TriggerOnParentStatus) {
+		return nil, ErrInvalidSchedule
+	}
+	if schedule.ParentJobID == nil && schedule.TriggerOnParentStatus != "" {
+		return nil, ErrInvalidSchedule
+	}
 
 	now := time.Now().UTC()
 	return &Job{
-		id:               shared.NewJobID(),
-		tenantID:         tenantID,
-		userID:           userID,
-		kind:             schedule.Type,
-		description:      description,
-		interval:         schedule.LegacyInterval,
-		scheduleType:     schedule.Type,
-		scheduledAtUTC:   schedule.ScheduledAtUTC.UTC(),
-		recurrenceRule:   schedule.RecurrenceRule,
-		localTime:        schedule.LocalTime,
-		timezoneID:       schedule.TimezoneID,
-		originalUserText: schedule.OriginalUserText,
-		sideEffecting:    schedule.SideEffecting,
-		idempotencyScope: schedule.IdempotencyScope,
-		createdAt:        now,
-		updatedAt:        now,
+		id:                    shared.NewJobID(),
+		tenantID:              tenantID,
+		userID:                userID,
+		kind:                  schedule.Type,
+		description:           description,
+		interval:              schedule.LegacyInterval,
+		scheduleType:          schedule.Type,
+		scheduledAtUTC:        schedule.ScheduledAtUTC.UTC(),
+		recurrenceRule:        schedule.RecurrenceRule,
+		localTime:             schedule.LocalTime,
+		timezoneID:            schedule.TimezoneID,
+		originalUserText:      schedule.OriginalUserText,
+		sideEffecting:         schedule.SideEffecting,
+		idempotencyScope:      schedule.IdempotencyScope,
+		parentJobID:           cloneJobID(schedule.ParentJobID),
+		triggerOnParentStatus: schedule.TriggerOnParentStatus,
+		createdAt:             now,
+		updatedAt:             now,
 	}, nil
 }
 
@@ -255,26 +270,30 @@ func rehydrateJob(
 	originalUserText string,
 	sideEffecting bool,
 	idempotencyScope string,
+	parentJobID *shared.JobID,
+	triggerOnParentStatus Status,
 	createdAt time.Time,
 	updatedAt time.Time,
 ) *Job {
 	return &Job{
-		id:               id,
-		tenantID:         tenantID,
-		userID:           userID,
-		kind:             kind,
-		description:      description,
-		interval:         interval,
-		scheduleType:     scheduleType,
-		scheduledAtUTC:   scheduledAtUTC,
-		recurrenceRule:   recurrenceRule,
-		localTime:        localTime,
-		timezoneID:       timezoneID,
-		originalUserText: originalUserText,
-		sideEffecting:    sideEffecting,
-		idempotencyScope: idempotencyScope,
-		createdAt:        createdAt,
-		updatedAt:        updatedAt,
+		id:                    id,
+		tenantID:              tenantID,
+		userID:                userID,
+		kind:                  kind,
+		description:           description,
+		interval:              interval,
+		scheduleType:          scheduleType,
+		scheduledAtUTC:        scheduledAtUTC,
+		recurrenceRule:        recurrenceRule,
+		localTime:             localTime,
+		timezoneID:            timezoneID,
+		originalUserText:      originalUserText,
+		sideEffecting:         sideEffecting,
+		idempotencyScope:      idempotencyScope,
+		parentJobID:           cloneJobID(parentJobID),
+		triggerOnParentStatus: triggerOnParentStatus,
+		createdAt:             createdAt,
+		updatedAt:             updatedAt,
 	}
 }
 
@@ -395,46 +414,72 @@ func (r *JobRun) setSchedule(j *Job) {
 	r.recurrenceRule = j.RecurrenceRule()
 	r.localTime = j.LocalTime()
 	r.timezoneID = j.TimezoneID()
+	r.parentJobID = j.ParentJobID()
 }
 
-func (j *Job) ID() shared.JobID          { return j.id }
-func (j *Job) TenantID() shared.TenantID { return j.tenantID }
-func (j *Job) UserID() shared.UserID     { return j.userID }
-func (j *Job) Kind() Kind                { return j.kind }
-func (j *Job) Description() string       { return j.description }
-func (j *Job) Interval() time.Duration   { return j.interval }
-func (j *Job) ScheduleType() Kind        { return j.scheduleType }
-func (j *Job) ScheduledAtUTC() time.Time { return j.scheduledAtUTC }
-func (j *Job) RecurrenceRule() string    { return j.recurrenceRule }
-func (j *Job) LocalTime() string         { return j.localTime }
-func (j *Job) TimezoneID() string        { return j.timezoneID }
-func (j *Job) OriginalUserText() string  { return j.originalUserText }
-func (j *Job) SideEffecting() bool       { return j.sideEffecting }
-func (j *Job) IdempotencyScope() string  { return j.idempotencyScope }
-func (j *Job) CreatedAt() time.Time      { return j.createdAt }
-func (j *Job) UpdatedAt() time.Time      { return j.updatedAt }
-func (r *JobRun) ID() shared.JobRunID    { return r.id }
+func (r *JobRun) setChildren(children []*Job) {
+	r.childJobIDs = make([]shared.JobID, 0, len(children))
+	for _, child := range children {
+		r.childJobIDs = append(r.childJobIDs, child.ID())
+	}
+}
+
+func isTerminalStatus(status Status) bool {
+	return status == StatusSuccess || status == StatusFailed || status == StatusCancelled
+}
+
+func cloneJobID(id *shared.JobID) *shared.JobID {
+	if id == nil {
+		return nil
+	}
+	out := *id
+	return &out
+}
+
+func (j *Job) ID() shared.JobID              { return j.id }
+func (j *Job) TenantID() shared.TenantID     { return j.tenantID }
+func (j *Job) UserID() shared.UserID         { return j.userID }
+func (j *Job) Kind() Kind                    { return j.kind }
+func (j *Job) Description() string           { return j.description }
+func (j *Job) Interval() time.Duration       { return j.interval }
+func (j *Job) ScheduleType() Kind            { return j.scheduleType }
+func (j *Job) ScheduledAtUTC() time.Time     { return j.scheduledAtUTC }
+func (j *Job) RecurrenceRule() string        { return j.recurrenceRule }
+func (j *Job) LocalTime() string             { return j.localTime }
+func (j *Job) TimezoneID() string            { return j.timezoneID }
+func (j *Job) OriginalUserText() string      { return j.originalUserText }
+func (j *Job) SideEffecting() bool           { return j.sideEffecting }
+func (j *Job) IdempotencyScope() string      { return j.idempotencyScope }
+func (j *Job) ParentJobID() *shared.JobID    { return cloneJobID(j.parentJobID) }
+func (j *Job) TriggerOnParentStatus() Status { return j.triggerOnParentStatus }
+func (j *Job) CreatedAt() time.Time          { return j.createdAt }
+func (j *Job) UpdatedAt() time.Time          { return j.updatedAt }
+func (r *JobRun) ID() shared.JobRunID        { return r.id }
 func (r *JobRun) TenantID() shared.TenantID {
 	return r.tenantID
 }
-func (r *JobRun) JobID() shared.JobID    { return r.jobID }
-func (r *JobRun) Sequence() int          { return r.sequence }
-func (r *JobRun) Status() Status         { return r.status }
-func (r *JobRun) ScheduledAt() time.Time { return r.scheduledAt }
-func (r *JobRun) TimeBucket() int64      { return r.timeBucket }
-func (r *JobRun) Attempts() int          { return r.attempts }
-func (r *JobRun) ErrorCode() string      { return r.errorCode }
-func (r *JobRun) ErrorMessage() string   { return r.errorMsg }
-func (r *JobRun) StartedAt() time.Time   { return r.startedAt }
-func (r *JobRun) CompletedAt() time.Time { return r.completedAt }
-func (r *JobRun) FailedAt() time.Time    { return r.failedAt }
-func (r *JobRun) CreatedAt() time.Time   { return r.createdAt }
-func (r *JobRun) UpdatedAt() time.Time   { return r.updatedAt }
-func (r *JobRun) ScheduleType() Kind     { return r.scheduleType }
-func (r *JobRun) RecurrenceRule() string { return r.recurrenceRule }
-func (r *JobRun) LocalTime() string      { return r.localTime }
-func (r *JobRun) TimezoneID() string     { return r.timezoneID }
-func (r *JobRun) IdempotencyKey() string { return r.idempotencyKey }
+func (r *JobRun) JobID() shared.JobID        { return r.jobID }
+func (r *JobRun) Sequence() int              { return r.sequence }
+func (r *JobRun) Status() Status             { return r.status }
+func (r *JobRun) ScheduledAt() time.Time     { return r.scheduledAt }
+func (r *JobRun) TimeBucket() int64          { return r.timeBucket }
+func (r *JobRun) Attempts() int              { return r.attempts }
+func (r *JobRun) ErrorCode() string          { return r.errorCode }
+func (r *JobRun) ErrorMessage() string       { return r.errorMsg }
+func (r *JobRun) StartedAt() time.Time       { return r.startedAt }
+func (r *JobRun) CompletedAt() time.Time     { return r.completedAt }
+func (r *JobRun) FailedAt() time.Time        { return r.failedAt }
+func (r *JobRun) CreatedAt() time.Time       { return r.createdAt }
+func (r *JobRun) UpdatedAt() time.Time       { return r.updatedAt }
+func (r *JobRun) ScheduleType() Kind         { return r.scheduleType }
+func (r *JobRun) RecurrenceRule() string     { return r.recurrenceRule }
+func (r *JobRun) LocalTime() string          { return r.localTime }
+func (r *JobRun) TimezoneID() string         { return r.timezoneID }
+func (r *JobRun) IdempotencyKey() string     { return r.idempotencyKey }
+func (r *JobRun) ParentJobID() *shared.JobID { return cloneJobID(r.parentJobID) }
+func (r *JobRun) ChildJobIDs() []shared.JobID {
+	return append([]shared.JobID(nil), r.childJobIDs...)
+}
 func (e *RunEvent) ID() shared.RunEventID {
 	return e.id
 }

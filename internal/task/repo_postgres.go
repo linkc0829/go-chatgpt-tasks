@@ -178,6 +178,21 @@ func (r *PostgresRepo) FindJob(ctx context.Context, id shared.JobID) (*Job, erro
 	return jobFromSqlc(row), nil
 }
 
+func (r *PostgresRepo) FindChildren(ctx context.Context, jobID shared.JobID, status Status) ([]*Job, error) {
+	rows, err := r.q.FindChildJobs(ctx, sqlc.FindChildJobsParams{
+		ParentJobID:           postgres.UUIDToPg(uuid.UUID(jobID)),
+		TriggerOnParentStatus: stringPtr(string(status)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("find child jobs: %w", err)
+	}
+	out := make([]*Job, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, jobFromChildRow(row))
+	}
+	return out, nil
+}
+
 func (r *PostgresRepo) InsertRunIfAbsent(ctx context.Context, run *JobRun) (bool, error) {
 	rows, err := r.q.InsertJobRunIfAbsent(ctx, jobRunToInsertIfAbsentParams(run))
 	if err != nil {

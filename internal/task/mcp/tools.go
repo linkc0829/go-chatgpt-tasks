@@ -46,15 +46,17 @@ type jobRef struct {
 }
 
 type runResponse struct {
-	JobID          string `json:"job_id"`
-	Status         string `json:"status"`
-	ScheduledAt    string `json:"scheduled_at"`
-	Sequence       int    `json:"sequence,omitempty"`
-	ScheduleType   string `json:"schedule_type,omitempty"`
-	RecurrenceRule string `json:"recurrence_rule,omitempty"`
-	LocalTime      string `json:"local_time,omitempty"`
-	TimezoneID     string `json:"timezone_id,omitempty"`
-	NextRunAtUTC   string `json:"next_run_at_utc,omitempty"`
+	JobID          string   `json:"job_id"`
+	Status         string   `json:"status"`
+	ScheduledAt    string   `json:"scheduled_at"`
+	Sequence       int      `json:"sequence,omitempty"`
+	ScheduleType   string   `json:"schedule_type,omitempty"`
+	RecurrenceRule string   `json:"recurrence_rule,omitempty"`
+	LocalTime      string   `json:"local_time,omitempty"`
+	TimezoneID     string   `json:"timezone_id,omitempty"`
+	NextRunAtUTC   string   `json:"next_run_at_utc,omitempty"`
+	ParentJobID    string   `json:"parent_job_id,omitempty"`
+	ChildJobIDs    []string `json:"children,omitempty"`
 }
 
 type listResponse struct {
@@ -211,7 +213,7 @@ func runIDFromArgs(raw json.RawMessage) (shared.JobRunID, error) {
 }
 
 func runToResponse(run *taskdomain.JobRun) runResponse {
-	return runResponse{
+	out := runResponse{
 		JobID:          run.ID().String(),
 		Status:         string(run.Status()),
 		ScheduledAt:    run.ScheduledAt().Format(time.RFC3339),
@@ -222,6 +224,13 @@ func runToResponse(run *taskdomain.JobRun) runResponse {
 		TimezoneID:     run.TimezoneID(),
 		NextRunAtUTC:   run.ScheduledAt().Format(time.RFC3339),
 	}
+	if parentID := run.ParentJobID(); parentID != nil {
+		out.ParentJobID = parentID.String()
+	}
+	for _, childID := range run.ChildJobIDs() {
+		out.ChildJobIDs = append(out.ChildJobIDs, childID.String())
+	}
+	return out
 }
 
 func eventToResponse(event *taskdomain.RunEvent) eventResponse {

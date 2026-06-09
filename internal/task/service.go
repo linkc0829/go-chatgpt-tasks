@@ -103,6 +103,11 @@ func (s *Service) Status(ctx context.Context, id Identity, runID shared.JobRunID
 		return nil, fmt.Errorf("find job schedule: %w", err)
 	}
 	run.setSchedule(job)
+	children, err := s.findAllChildren(ctx, run.JobID())
+	if err != nil {
+		return nil, err
+	}
+	run.setChildren(children)
 	return run, nil
 }
 
@@ -125,6 +130,9 @@ func (s *Service) Cancel(ctx context.Context, id Identity, runID shared.JobRunID
 		return nil, fmt.Errorf("update run: %w", err)
 	}
 	_ = s.repo.AppendEvent(ctx, NewRunEvent(run.TenantID(), run.JobID(), run.ID(), StatusCancelled, EventJobCancelled, nil))
+	if err := s.cancelPendingChildren(ctx, run); err != nil {
+		return nil, err
+	}
 	return run, nil
 }
 
@@ -244,4 +252,48 @@ func scheduleFromInput(in CreateInput) (ScheduleSpec, time.Time, error) {
 	}
 	spec.ScheduledAtUTC = next
 	return spec, next, nil
+}
+
+func (s *Service) cancelPendingChildren(ctx context.Context, parent *JobRun) error {
+	children, err := s.findAllChildren(ctx, parent.JobID())
+	if err != nil {
+		return err
+	}
+	for _, child := range children {
+		runs, _, err := s.repo.ListRunsByJob(ctx, parent.TenantID(), child.ID(), shared.NewPagination(100, 0))
+		if err != nil {
+			return fmt.Errorf("list child runs for cancellation: %w", err)
+		}
+		for _, childRun := range runs {
+			if childRun.Status() != StatusPending && childRun.Status() != StatusQueued {
+				continue
+			}
+			if err := childRun.Cancel(); err != nil {
+				return err
+			}
+			if err := s.repo.UpdateRunStatus(ctx, childRun); err != nil {
+				return fmt.Errorf("cancel child run: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) findAllChildren(ctx context.Context, parentJobID shared.JobID) ([]*Job, error) {
+	seen := make(map[shared.JobID]struct{})
+	var out []*Job
+	for _, trigger := range []Status{StatusSuccess, StatusFailed, StatusCancelled} {
+		children, err := s.repo.FindChildren(ctx, parentJobID, trigger)
+		if err != nil {
+			return nil, fmt.Errorf("find child jobs: %w", err)
+		}
+		for _, child := range children {
+			if _, ok := seen[child.ID()]; ok {
+				continue
+			}
+			seen[child.ID()] = struct{}{}
+			out = append(out, child)
+		}
+	}
+	return out, nil
 }

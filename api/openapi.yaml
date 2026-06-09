@@ -281,6 +281,10 @@ components:
         local_time: { type: string }
         timezone_id: { type: string }
         next_run_at_utc: { type: string, format: date-time }
+        parent_job_id: { type: string, format: uuid }
+        children:
+          type: array
+          items: { type: string, format: uuid }
 
     ListRunsResponse:
       type: object

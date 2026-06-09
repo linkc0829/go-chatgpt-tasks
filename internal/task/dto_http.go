@@ -69,6 +69,8 @@ type RunResponse struct {
 	LocalTime      string          `json:"local_time,omitempty"`
 	TimezoneID     string          `json:"timezone_id,omitempty"`
 	NextRunAtUTC   string          `json:"next_run_at_utc,omitempty"`
+	ParentJobID    *shared.JobID   `json:"parent_job_id,omitempty"`
+	ChildJobIDs    []shared.JobID  `json:"children,omitempty"`
 }
 
 type ListRunsResponse struct {
@@ -114,6 +116,8 @@ func runToHTTPResponse(run *JobRun) RunResponse {
 		LocalTime:      run.LocalTime(),
 		TimezoneID:     run.TimezoneID(),
 		NextRunAtUTC:   run.ScheduledAt().Format(time.RFC3339),
+		ParentJobID:    run.ParentJobID(),
+		ChildJobIDs:    run.ChildJobIDs(),
 	}
 }
 

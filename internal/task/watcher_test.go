@@ -48,6 +48,9 @@ func (r *watcherRepo) FindDueRuns(context.Context, int64, time.Time, int32) ([]*
 func (r *watcherRepo) FindJob(context.Context, shared.JobID) (*Job, error) {
 	return nil, ErrJobNotFound
 }
+func (r *watcherRepo) FindChildren(context.Context, shared.JobID, Status) ([]*Job, error) {
+	return nil, nil
+}
 func (r *watcherRepo) InsertRunIfAbsent(context.Context, *JobRun) (bool, error) {
 	return false, nil
 }

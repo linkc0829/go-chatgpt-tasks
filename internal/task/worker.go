@@ -127,6 +127,7 @@ func (w *Worker) process(ctx context.Context, qm QueuedMessage) {
 		return
 	}
 	w.appendEvent(ctx, run, EventJobRunSucceeded, nil)
+	w.enqueueChildren(ctx, run)
 	w.m.recordRun(run)
 	w.ack(ctx, qm.StreamID)
 }
@@ -144,6 +145,7 @@ func (w *Worker) handleFailure(ctx context.Context, qm QueuedMessage, run *JobRu
 		payload := map[string]any{"error_code": run.ErrorCode(), "error_message": run.ErrorMessage()}
 		w.appendEvent(ctx, run, EventJobRunFailed, payload)
 		w.appendEvent(ctx, run, EventJobRunDLQ, payload)
+		w.enqueueChildren(ctx, run)
 		if err := w.queue.DeadLetter(ctx, qm.Msg); err != nil {
 			w.log.Error("worker dead letter", zap.String("job_run_id", run.ID().String()), zap.Error(err))
 			return
@@ -175,6 +177,38 @@ func (w *Worker) handleFailure(ctx context.Context, qm QueuedMessage, run *JobRu
 	}
 	w.log.Info("job run retry scheduled", zap.String("job_run_id", run.ID().String()), zap.Error(execErr))
 	w.ack(ctx, qm.StreamID)
+}
+
+func (w *Worker) enqueueChildren(ctx context.Context, parent *JobRun) {
+	children, err := w.repo.FindChildren(ctx, parent.JobID(), parent.Status())
+	if err != nil {
+		w.log.Error("worker find child jobs", zap.String("job_id", parent.JobID().String()), zap.Error(err))
+		return
+	}
+	for _, child := range children {
+		run, err := NewJobRun(child.TenantID(), child.ID(), 1, time.Now().UTC())
+		if err != nil {
+			w.log.Error("worker build child run", zap.String("job_id", child.ID().String()), zap.Error(err))
+			continue
+		}
+		if err := run.MarkQueued(); err != nil {
+			w.log.Error("worker mark child queued", zap.String("job_id", child.ID().String()), zap.Error(err))
+			continue
+		}
+		if err := w.repo.SaveRun(ctx, run); err != nil {
+			w.log.Error("worker save child run", zap.String("job_id", child.ID().String()), zap.Error(err))
+			continue
+		}
+		if err := w.queue.Enqueue(ctx, JobRunMsg{
+			JobRunID:       run.ID().String(),
+			TenantID:       run.TenantID().String(),
+			IdempotencyKey: run.IdempotencyKey(),
+		}); err != nil {
+			w.log.Error("worker enqueue child run", zap.String("job_run_id", run.ID().String()), zap.Error(err))
+			continue
+		}
+		w.appendEvent(ctx, run, EventChildEnqueued, map[string]any{"parent_job_id": parent.JobID().String()})
+	}
 }
 
 func (w *Worker) persistStatus(ctx context.Context, run *JobRun) error {

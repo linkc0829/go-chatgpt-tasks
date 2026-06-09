@@ -17,6 +17,7 @@ type Querier interface {
 	CountJobRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountJobRunsByJob(ctx context.Context, arg CountJobRunsByJobParams) (int64, error)
 	CountJobsCreatedSince(ctx context.Context, arg CountJobsCreatedSinceParams) (int64, error)
+	FindChildJobs(ctx context.Context, arg FindChildJobsParams) ([]FindChildJobsRow, error)
 	FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]FindDueJobRunsRow, error)
 	GetIdempotency(ctx context.Context, idempotencyKey string) (GetIdempotencyRow, error)
 	GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error)

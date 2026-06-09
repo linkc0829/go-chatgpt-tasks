@@ -19,6 +19,7 @@ type Repo interface {
 	AppendEvent(ctx context.Context, e *RunEvent) error
 	FindDueRuns(ctx context.Context, bucket int64, before time.Time, limit int32) ([]*JobRun, error)
 	FindJob(ctx context.Context, id shared.JobID) (*Job, error)
+	FindChildren(ctx context.Context, jobID shared.JobID, status Status) ([]*Job, error)
 	InsertRunIfAbsent(ctx context.Context, r *JobRun) (created bool, err error)
 	FindTerminalRecurringRuns(ctx context.Context, since time.Time, limit int32) ([]NextRunSpec, error)
 }

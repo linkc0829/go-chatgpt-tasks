@@ -2,12 +2,14 @@
 INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
                   scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
                   side_effecting, idempotency_scope,
+                  parent_job_id, trigger_on_parent_status,
                   created_at, updated_at)
 VALUES (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(user_id), sqlc.arg(kind),
         sqlc.arg(description), sqlc.arg(interval_seconds), sqlc.arg(schedule_type),
         sqlc.arg(scheduled_at_utc), sqlc.arg(recurrence_rule), sqlc.arg(local_time),
         sqlc.arg(timezone_id), sqlc.arg(original_user_text), sqlc.arg(side_effecting),
-        sqlc.arg(idempotency_scope), sqlc.arg(created_at), sqlc.arg(updated_at));
+        sqlc.arg(idempotency_scope), sqlc.arg(parent_job_id), sqlc.arg(trigger_on_parent_status),
+        sqlc.arg(created_at), sqlc.arg(updated_at));
 
 -- name: InsertJobRun :exec
 INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
@@ -87,8 +89,19 @@ ORDER BY created_at;
 SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
        scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
        side_effecting, idempotency_scope,
+       parent_job_id, trigger_on_parent_status,
        created_at, updated_at
 FROM jobs WHERE id = sqlc.arg(id);
+
+-- name: FindChildJobs :many
+SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
+       scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+       side_effecting, idempotency_scope, parent_job_id, trigger_on_parent_status,
+       created_at, updated_at
+FROM jobs
+WHERE parent_job_id = sqlc.arg(parent_job_id)
+  AND trigger_on_parent_status = sqlc.arg(trigger_on_parent_status)
+ORDER BY created_at;
 
 -- name: ListTerminalRecurringRuns :many
 SELECT r.id, r.tenant_id, r.job_id, r.sequence, r.scheduled_at,

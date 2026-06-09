@@ -51,6 +51,21 @@ func (mr *MockRepoMockRecorder) AppendEvent(ctx, e interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEvent", reflect.TypeOf((*MockRepo)(nil).AppendEvent), ctx, e)
 }
 
+// FindChildren mocks base method.
+func (m *MockRepo) FindChildren(ctx context.Context, jobID shared.JobID, status task.Status) ([]*task.Job, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindChildren", ctx, jobID, status)
+	ret0, _ := ret[0].([]*task.Job)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindChildren indicates an expected call of FindChildren.
+func (mr *MockRepoMockRecorder) FindChildren(ctx, jobID, status interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindChildren", reflect.TypeOf((*MockRepo)(nil).FindChildren), ctx, jobID, status)
+}
+
 // FindDueRuns mocks base method.
 func (m *MockRepo) FindDueRuns(ctx context.Context, bucket int64, before time.Time, limit int32) ([]*task.JobRun, error) {
 	m.ctrl.T.Helper()

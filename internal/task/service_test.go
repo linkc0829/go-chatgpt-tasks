@@ -37,6 +37,8 @@ type fakeRepo struct {
 	lastSavedRun      *JobRun
 	lastUpdatedRun    *JobRun
 	lastAppendedEvent *RunEvent
+	children          []*Job
+	childRuns         []*JobRun
 }
 
 func (f *fakeRepo) SaveJob(_ context.Context, j *Job) error {
@@ -66,6 +68,9 @@ func (f *fakeRepo) ListRuns(_ context.Context, _ shared.TenantID, _ shared.Pagin
 }
 
 func (f *fakeRepo) ListRunsByJob(_ context.Context, _ shared.TenantID, _ shared.JobID, _ shared.Pagination) ([]*JobRun, int64, error) {
+	if f.childRuns != nil {
+		return f.childRuns, int64(len(f.childRuns)), f.listErr
+	}
 	return f.listRuns, f.listTotal, f.listErr
 }
 
@@ -88,6 +93,9 @@ func (f *fakeRepo) FindDueRuns(_ context.Context, _ int64, _ time.Time, _ int32)
 
 func (f *fakeRepo) FindJob(_ context.Context, _ shared.JobID) (*Job, error) {
 	return f.findJob, f.findJobErr
+}
+func (f *fakeRepo) FindChildren(_ context.Context, _ shared.JobID, _ Status) ([]*Job, error) {
+	return f.children, nil
 }
 
 func (f *fakeRepo) InsertRunIfAbsent(_ context.Context, _ *JobRun) (bool, error) {
@@ -216,6 +224,34 @@ func TestService_Cancel(t *testing.T) {
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, ErrInvalidStatusTransition), "Cancel() error = %v, want %v", err, ErrInvalidStatusTransition)
 		assert.Equal(t, 0, repo.updateRunCalls)
+	})
+
+	t.Run("cancel_parent_cancels_pending_child_but_leaves_running_child", func(t *testing.T) {
+		parent := newTestRun(t)
+		parentJobID := parent.JobID()
+		child, err := NewJob(parent.TenantID(), shared.NewUserID(), "child", ScheduleSpec{
+			Type:                  KindOneOff,
+			ScheduledAtUTC:        time.Now().UTC(),
+			TimezoneID:            "UTC",
+			ParentJobID:           &parentJobID,
+			TriggerOnParentStatus: StatusSuccess,
+		})
+		require.NoError(t, err)
+		pending, err := NewJobRun(parent.TenantID(), child.ID(), 1, time.Now().UTC())
+		require.NoError(t, err)
+		running, err := NewJobRun(parent.TenantID(), child.ID(), 2, time.Now().UTC())
+		require.NoError(t, err)
+		require.NoError(t, running.MarkQueued())
+		require.NoError(t, running.MarkRunning())
+		repo := &fakeRepo{findRun: parent, children: []*Job{child}, childRuns: []*JobRun{pending, running}}
+		svc := NewService(repo, nil)
+
+		_, err = svc.Cancel(context.Background(), identityForRun(parent), parent.ID())
+
+		require.NoError(t, err)
+		assert.Equal(t, StatusCancelled, pending.Status())
+		assert.Equal(t, StatusRunning, running.Status())
+		assert.Equal(t, 2, repo.updateRunCalls)
 	})
 
 	t.Run("status_not_found", func(t *testing.T) {

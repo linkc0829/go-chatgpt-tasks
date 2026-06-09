@@ -134,6 +134,82 @@ func (q *Queries) CountJobsCreatedSince(ctx context.Context, arg CountJobsCreate
 	return count, err
 }
 
+const findChildJobs = `-- name: FindChildJobs :many
+SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
+       scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+       side_effecting, idempotency_scope, parent_job_id, trigger_on_parent_status,
+       created_at, updated_at
+FROM jobs
+WHERE parent_job_id = $1
+  AND trigger_on_parent_status = $2
+ORDER BY created_at
+`
+
+type FindChildJobsParams struct {
+	ParentJobID           pgtype.UUID
+	TriggerOnParentStatus *string
+}
+
+type FindChildJobsRow struct {
+	ID                    pgtype.UUID
+	TenantID              pgtype.UUID
+	UserID                pgtype.UUID
+	Kind                  string
+	Description           string
+	IntervalSeconds       int64
+	ScheduleType          string
+	ScheduledAtUtc        pgtype.Timestamptz
+	RecurrenceRule        *string
+	LocalTime             *string
+	TimezoneID            string
+	OriginalUserText      *string
+	SideEffecting         bool
+	IdempotencyScope      string
+	ParentJobID           pgtype.UUID
+	TriggerOnParentStatus *string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+}
+
+func (q *Queries) FindChildJobs(ctx context.Context, arg FindChildJobsParams) ([]FindChildJobsRow, error) {
+	rows, err := q.db.Query(ctx, findChildJobs, arg.ParentJobID, arg.TriggerOnParentStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindChildJobsRow{}
+	for rows.Next() {
+		var i FindChildJobsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.UserID,
+			&i.Kind,
+			&i.Description,
+			&i.IntervalSeconds,
+			&i.ScheduleType,
+			&i.ScheduledAtUtc,
+			&i.RecurrenceRule,
+			&i.LocalTime,
+			&i.TimezoneID,
+			&i.OriginalUserText,
+			&i.SideEffecting,
+			&i.IdempotencyScope,
+			&i.ParentJobID,
+			&i.TriggerOnParentStatus,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findDueJobRuns = `-- name: FindDueJobRuns :many
 SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
        error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
@@ -236,27 +312,30 @@ const getJobByID = `-- name: GetJobByID :one
 SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
        scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
        side_effecting, idempotency_scope,
+       parent_job_id, trigger_on_parent_status,
        created_at, updated_at
 FROM jobs WHERE id = $1
 `
 
 type GetJobByIDRow struct {
-	ID               pgtype.UUID
-	TenantID         pgtype.UUID
-	UserID           pgtype.UUID
-	Kind             string
-	Description      string
-	IntervalSeconds  int64
-	ScheduleType     string
-	ScheduledAtUtc   pgtype.Timestamptz
-	RecurrenceRule   *string
-	LocalTime        *string
-	TimezoneID       string
-	OriginalUserText *string
-	SideEffecting    bool
-	IdempotencyScope string
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
+	ID                    pgtype.UUID
+	TenantID              pgtype.UUID
+	UserID                pgtype.UUID
+	Kind                  string
+	Description           string
+	IntervalSeconds       int64
+	ScheduleType          string
+	ScheduledAtUtc        pgtype.Timestamptz
+	RecurrenceRule        *string
+	LocalTime             *string
+	TimezoneID            string
+	OriginalUserText      *string
+	SideEffecting         bool
+	IdempotencyScope      string
+	ParentJobID           pgtype.UUID
+	TriggerOnParentStatus *string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
 }
 
 func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error) {
@@ -277,6 +356,8 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow
 		&i.OriginalUserText,
 		&i.SideEffecting,
 		&i.IdempotencyScope,
+		&i.ParentJobID,
+		&i.TriggerOnParentStatus,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -362,31 +443,35 @@ const insertJob = `-- name: InsertJob :exec
 INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
                   scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
                   side_effecting, idempotency_scope,
+                  parent_job_id, trigger_on_parent_status,
                   created_at, updated_at)
 VALUES ($1, $2, $3, $4,
         $5, $6, $7,
         $8, $9, $10,
         $11, $12, $13,
-        $14, $15, $16)
+        $14, $15, $16,
+        $17, $18)
 `
 
 type InsertJobParams struct {
-	ID               pgtype.UUID
-	TenantID         pgtype.UUID
-	UserID           pgtype.UUID
-	Kind             string
-	Description      string
-	IntervalSeconds  int64
-	ScheduleType     string
-	ScheduledAtUtc   pgtype.Timestamptz
-	RecurrenceRule   *string
-	LocalTime        *string
-	TimezoneID       string
-	OriginalUserText *string
-	SideEffecting    bool
-	IdempotencyScope string
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
+	ID                    pgtype.UUID
+	TenantID              pgtype.UUID
+	UserID                pgtype.UUID
+	Kind                  string
+	Description           string
+	IntervalSeconds       int64
+	ScheduleType          string
+	ScheduledAtUtc        pgtype.Timestamptz
+	RecurrenceRule        *string
+	LocalTime             *string
+	TimezoneID            string
+	OriginalUserText      *string
+	SideEffecting         bool
+	IdempotencyScope      string
+	ParentJobID           pgtype.UUID
+	TriggerOnParentStatus *string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
 }
 
 func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
@@ -405,6 +490,8 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.OriginalUserText,
 		arg.SideEffecting,
 		arg.IdempotencyScope,
+		arg.ParentJobID,
+		arg.TriggerOnParentStatus,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
