@@ -12,4 +12,8 @@ var (
 	ErrQuotaExceeded           = errors.New("tenant quota exceeded")
 	ErrInvalidTimezone         = errors.New("invalid timezone")
 	ErrInvalidRecurrence       = errors.New("invalid recurrence")
+	ErrInvalidJobType          = errors.New("invalid job type")
+	ErrInvalidLLMOutput        = errors.New("invalid LLM output")
+	ErrLLMTimeout              = errors.New("LLM request timed out")
+	ErrLLMCostExceeded         = errors.New("LLM cost budget exceeded")
 )

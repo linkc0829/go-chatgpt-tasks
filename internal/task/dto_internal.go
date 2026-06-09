@@ -31,6 +31,7 @@ func jobFromSqlc(r sqlc.GetJobByIDRow) *Job {
 		r.IdempotencyScope,
 		jobIDPtrFromPg(r.ParentJobID),
 		Status(stringValue(r.TriggerOnParentStatus)),
+		JobType(r.JobType),
 		postgres.PgToTime(r.CreatedAt),
 		postgres.PgToTime(r.UpdatedAt),
 	)
@@ -54,6 +55,7 @@ func jobFromChildRow(r sqlc.FindChildJobsRow) *Job {
 		r.IdempotencyScope,
 		jobIDPtrFromPg(r.ParentJobID),
 		Status(stringValue(r.TriggerOnParentStatus)),
+		JobType(r.JobType),
 		postgres.PgToTime(r.CreatedAt),
 		postgres.PgToTime(r.UpdatedAt),
 	)
@@ -77,6 +79,7 @@ func jobToInsertParams(j *Job) sqlc.InsertJobParams {
 		IdempotencyScope:      j.IdempotencyScope(),
 		ParentJobID:           jobIDPtrToPg(j.ParentJobID()),
 		TriggerOnParentStatus: stringPtr(string(j.TriggerOnParentStatus())),
+		JobType:               string(j.JobType()),
 		CreatedAt:             postgres.TimeToPg(j.CreatedAt()),
 		UpdatedAt:             postgres.TimeToPg(j.UpdatedAt()),
 	}

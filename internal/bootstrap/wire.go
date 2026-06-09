@@ -31,6 +31,7 @@ func wireFeatures(
 	metricsReg *metrics.Registry,
 	lg *zap.Logger,
 	quotaCfg config.QuotaConfig,
+	llmCfg config.LLMConfig,
 ) []task.Runner {
 	api := engine.Group("/api/v1")
 
@@ -60,7 +61,11 @@ func wireFeatures(
 
 	taskQueue := task.NewRedisQueue(rdb)
 	watcher := task.NewWatcher(taskRepo, taskQueue, 5*time.Second, lg)
-	baseExec := task.NewStubExecutor(lg)
+	baseExec := task.NewLLMExecutor(taskRepo, taskQuota, task.NewFakeLLMClient(), task.LLMPolicy{
+		TimeoutSeconds: llmCfg.TimeoutSeconds, MaxRetries: llmCfg.MaxRetries,
+		MaxInputTokens: llmCfg.MaxInputTokens, MaxOutputTokens: llmCfg.MaxOutputTokens,
+		MaxCostCents: llmCfg.MaxCostCents, OutputSchema: llmCfg.OutputSchema,
+	}, taskMetrics)
 	exec := task.NewIdempotentExecutor(taskRepo, task.NewIdempotencyStore(pool), baseExec, lg)
 	const workerCount = 3
 	runners := []task.Runner{watcher}

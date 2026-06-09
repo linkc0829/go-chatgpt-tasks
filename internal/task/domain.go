@@ -10,10 +10,13 @@ import (
 )
 
 type Kind string
+type JobType string
 
 const (
 	KindOneOff    Kind = "one_off"
 	KindRecurring Kind = "recurring"
+
+	JobTypeGenericLLM JobType = "generic_llm"
 )
 
 type Status string
@@ -31,16 +34,19 @@ const (
 type EventType string
 
 const (
-	EventJobRunCreated     EventType = "job_run.created"
-	EventJobRunEnqueued    EventType = "job_run.enqueued"
-	EventJobRunStarted     EventType = "job_run.started"
-	EventJobRunSucceeded   EventType = "job_run.succeeded"
-	EventJobRunFailed      EventType = "job_run.failed"
-	EventJobRunRetry       EventType = "job_run.retry_scheduled"
-	EventJobRunDLQ         EventType = "job_run.dlq"
-	EventJobCancelled      EventType = "job.cancelled"
-	EventDuplicateDetected EventType = "job_run.duplicate_detected"
-	EventChildEnqueued     EventType = "child_job.enqueued"
+	EventJobRunCreated       EventType = "job_run.created"
+	EventJobRunEnqueued      EventType = "job_run.enqueued"
+	EventJobRunStarted       EventType = "job_run.started"
+	EventJobRunSucceeded     EventType = "job_run.succeeded"
+	EventJobRunFailed        EventType = "job_run.failed"
+	EventJobRunRetry         EventType = "job_run.retry_scheduled"
+	EventJobRunDLQ           EventType = "job_run.dlq"
+	EventJobCancelled        EventType = "job.cancelled"
+	EventDuplicateDetected   EventType = "job_run.duplicate_detected"
+	EventChildEnqueued       EventType = "child_job.enqueued"
+	EventLLMTimeout          EventType = "llm.timeout"
+	EventLLMValidationFailed EventType = "llm.validation_failed"
+	EventQuotaDeferred       EventType = "quota.deferred"
 )
 
 type Quota struct {
@@ -62,6 +68,7 @@ type ScheduleSpec struct {
 	IdempotencyScope      string
 	ParentJobID           *shared.JobID
 	TriggerOnParentStatus Status
+	JobType               JobType
 }
 
 type Job struct {
@@ -81,6 +88,7 @@ type Job struct {
 	idempotencyScope      string
 	parentJobID           *shared.JobID
 	triggerOnParentStatus Status
+	jobType               JobType
 	createdAt             time.Time
 	updatedAt             time.Time
 }
@@ -179,6 +187,12 @@ func NewJob(tenantID shared.TenantID, userID shared.UserID, description string, 
 	if schedule.ParentJobID == nil && schedule.TriggerOnParentStatus != "" {
 		return nil, ErrInvalidSchedule
 	}
+	if schedule.JobType == "" {
+		schedule.JobType = JobTypeGenericLLM
+	}
+	if schedule.JobType != JobTypeGenericLLM {
+		return nil, ErrInvalidJobType
+	}
 
 	now := time.Now().UTC()
 	return &Job{
@@ -198,6 +212,7 @@ func NewJob(tenantID shared.TenantID, userID shared.UserID, description string, 
 		idempotencyScope:      schedule.IdempotencyScope,
 		parentJobID:           cloneJobID(schedule.ParentJobID),
 		triggerOnParentStatus: schedule.TriggerOnParentStatus,
+		jobType:               schedule.JobType,
 		createdAt:             now,
 		updatedAt:             now,
 	}, nil
@@ -272,6 +287,7 @@ func rehydrateJob(
 	idempotencyScope string,
 	parentJobID *shared.JobID,
 	triggerOnParentStatus Status,
+	jobType JobType,
 	createdAt time.Time,
 	updatedAt time.Time,
 ) *Job {
@@ -292,6 +308,7 @@ func rehydrateJob(
 		idempotencyScope:      idempotencyScope,
 		parentJobID:           cloneJobID(parentJobID),
 		triggerOnParentStatus: triggerOnParentStatus,
+		jobType:               jobType,
 		createdAt:             createdAt,
 		updatedAt:             updatedAt,
 	}
@@ -452,6 +469,7 @@ func (j *Job) SideEffecting() bool           { return j.sideEffecting }
 func (j *Job) IdempotencyScope() string      { return j.idempotencyScope }
 func (j *Job) ParentJobID() *shared.JobID    { return cloneJobID(j.parentJobID) }
 func (j *Job) TriggerOnParentStatus() Status { return j.triggerOnParentStatus }
+func (j *Job) JobType() JobType              { return j.jobType }
 func (j *Job) CreatedAt() time.Time          { return j.createdAt }
 func (j *Job) UpdatedAt() time.Time          { return j.updatedAt }
 func (r *JobRun) ID() shared.JobRunID        { return r.id }

@@ -547,6 +547,44 @@ func (mr *MockExecutorMockRecorder) Execute(ctx, r interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockExecutor)(nil).Execute), ctx, r)
 }
 
+// MockLLMClient is a mock of LLMClient interface.
+type MockLLMClient struct {
+	ctrl     *gomock.Controller
+	recorder *MockLLMClientMockRecorder
+}
+
+// MockLLMClientMockRecorder is the mock recorder for MockLLMClient.
+type MockLLMClientMockRecorder struct {
+	mock *MockLLMClient
+}
+
+// NewMockLLMClient creates a new mock instance.
+func NewMockLLMClient(ctrl *gomock.Controller) *MockLLMClient {
+	mock := &MockLLMClient{ctrl: ctrl}
+	mock.recorder = &MockLLMClientMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockLLMClient) EXPECT() *MockLLMClientMockRecorder {
+	return m.recorder
+}
+
+// Complete mocks base method.
+func (m *MockLLMClient) Complete(ctx context.Context, req task.LLMRequest) (task.LLMResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Complete", ctx, req)
+	ret0, _ := ret[0].(task.LLMResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Complete indicates an expected call of Complete.
+func (mr *MockLLMClientMockRecorder) Complete(ctx, req interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Complete", reflect.TypeOf((*MockLLMClient)(nil).Complete), ctx, req)
+}
+
 // MockTenantResolver is a mock of TenantResolver interface.
 type MockTenantResolver struct {
 	ctrl     *gomock.Controller

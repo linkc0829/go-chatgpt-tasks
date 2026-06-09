@@ -37,6 +37,7 @@ type Job struct {
 	IdempotencyScope      string
 	ParentJobID           pgtype.UUID
 	TriggerOnParentStatus *string
+	JobType               string
 }
 
 type JobRun struct {

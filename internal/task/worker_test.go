@@ -12,6 +12,7 @@ import (
 
 type workerRepo struct {
 	run           *JobRun
+	job           *Job
 	updatedStatus []Status
 	events        []*RunEvent
 	children      []*Job
@@ -50,6 +51,9 @@ func (r *workerRepo) FindDueRuns(context.Context, int64, time.Time, int32) ([]*J
 	return nil, nil
 }
 func (r *workerRepo) FindJob(context.Context, shared.JobID) (*Job, error) {
+	if r.job != nil {
+		return r.job, nil
+	}
 	return nil, ErrJobNotFound
 }
 func (r *workerRepo) FindChildren(context.Context, shared.JobID, Status) ([]*Job, error) {
@@ -91,6 +95,20 @@ func (q *workerQueue) DeadLetter(_ context.Context, msg JobRunMsg) error {
 type workerExecutor struct {
 	err   error
 	calls int
+}
+
+type workerQuotaRepo struct {
+	quota Quota
+}
+
+func (r *workerQuotaRepo) Get(context.Context, shared.TenantID) (Quota, error) {
+	return r.quota, nil
+}
+func (r *workerQuotaRepo) CountJobsSince(context.Context, shared.TenantID, time.Time) (int64, error) {
+	return 0, nil
+}
+func (r *workerQuotaRepo) CountActiveRecurring(context.Context, shared.TenantID) (int64, error) {
+	return 0, nil
 }
 
 func (e *workerExecutor) Execute(context.Context, *JobRun) error {
@@ -232,6 +250,52 @@ func TestWorker_processMaxFailureDeadLettersAndAcks(t *testing.T) {
 	}
 	if got, want := queue.acked, []string{"3-0"}; !stringsEqual(got, want) {
 		t.Errorf("Worker.process(max failure) acked = %v, want %v", got, want)
+	}
+}
+
+func TestWorker_processInvalidLLMOutputRetriesThenFailsWithoutSuccess(t *testing.T) {
+	run := newQueuedWorkerRun(t)
+	job, err := NewJob(run.TenantID(), shared.NewUserID(), "return JSON", ScheduleSpec{
+		Type:           KindOneOff,
+		ScheduledAtUTC: time.Now().UTC(),
+		TimezoneID:     "UTC",
+		JobType:        JobTypeGenericLLM,
+	})
+	if err != nil {
+		t.Fatalf("NewJob() error = %v", err)
+	}
+	run.jobID = job.ID()
+	run.idempotencyKey = job.ID().String() + ":1"
+	repo := &workerRepo{run: run, job: job}
+	queue := &workerQueue{}
+	client := &FakeLLMClient{Response: LLMResponse{Content: "invalid"}}
+	exec := NewLLMExecutor(repo, &workerQuotaRepo{quota: Quota{MaxDailyLLMCostCents: 100}}, client, LLMPolicy{
+		TimeoutSeconds:  1,
+		MaxInputTokens:  100,
+		MaxOutputTokens: 100,
+		MaxCostCents:    100,
+		OutputSchema:    "{}",
+	}, nil)
+	worker := NewWorker("worker-test", repo, queue, exec, zap.NewNop(), nil)
+
+	for i := 0; i < maxAttempts; i++ {
+		worker.process(context.Background(), queuedMessageFor(run, "llm-invalid"))
+	}
+
+	if got, want := run.Status(), StatusFailed; got != want {
+		t.Errorf("Worker.process(invalid LLM output) status = %q, want %q", got, want)
+	}
+	validationFailures := 0
+	for _, event := range repo.events {
+		if event.EventType() == EventJobRunSucceeded {
+			t.Errorf("Worker.process(invalid LLM output) emitted unexpected %q event", EventJobRunSucceeded)
+		}
+		if event.EventType() == EventLLMValidationFailed {
+			validationFailures++
+		}
+	}
+	if got, want := validationFailures, maxAttempts; got != want {
+		t.Errorf("Worker.process(invalid LLM output) validation events = %d, want %d", got, want)
 	}
 }
 

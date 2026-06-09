@@ -389,7 +389,19 @@ CREATE INDEX idx_jobs_parent ON jobs (parent_job_id);
 
 ### Changes
 
-#### 1. LLM port + policy
+#### 1. Migration + job-type dispatch contract
+**Files**: `migrations/0008_llm_job_type.up.sql` / `.down.sql`,
+`sql/queries/task.sql`, `internal/task/{domain.go,dto_internal.go,repo_postgres.go}` **Action**:
+create/modify
+- Add `jobs.job_type TEXT NOT NULL DEFAULT 'generic_llm'`. Existing jobs become
+  `generic_llm`; this is the only executable job type in v1.
+- Add `JobTypeGenericLLM = "generic_llm"` and carry `jobType` through `Job`, `ScheduleSpec`,
+  rehydration, persistence, and a `JobType()` getter. `NewJob` defaults an empty job type to
+  `generic_llm` and rejects unsupported values with `ErrInvalidJobType`.
+- The executor loads the persisted job and dispatches on `job.JobType()`; unknown types fail
+  loudly rather than silently executing as an LLM job.
+
+#### 2. LLM port + policy
 **Files**: `internal/task/{ports.go,llm.go}` **Action**: create/modify
 ```go
 type LLMClient interface { Complete(ctx context.Context, req LLMRequest) (LLMResponse, error) }
@@ -399,7 +411,7 @@ type LLMPolicy struct { TimeoutSeconds, MaxRetries, MaxInputTokens, MaxOutputTok
 ```
 `llm.go`: `ValidateOutput(schema, content) error`, `EstimateCostCents(model, in, out int) int`.
 
-#### 2. Executor with reliability wrapper
+#### 3. Executor with reliability wrapper
 **File**: `internal/task/executor.go` **Action**: modify — replace the no-op with a job-type
 dispatcher. For `generic_llm`:
 1. cost estimate vs tenant `max_daily_llm_cost_cents` (via `QuotaRepo` + a daily-cost counter) → over budget: emit `quota.deferred` RunEvent (a run exists here, unlike the Phase 3 creation gate), fail without calling the model;
@@ -408,7 +420,7 @@ dispatcher. For `generic_llm`:
 4. success records token/cost metrics.
 New event types (define in `domain.go`): `EventLLMTimeout = "llm.timeout"`, `EventLLMValidationFailed = "llm.validation_failed"`, `EventQuotaDeferred = "quota.deferred"`.
 
-#### 3. Fake client + wiring + config
+#### 4. Fake client + wiring + config
 **Files**: `internal/task/llm_fake.go` (test), `internal/platform/config/config.go`, `internal/bootstrap/wire.go`, `internal/task/metrics.go` **Action**: create/modify
 - `fakeLLMClient` returns scripted content/tokens/errors for deterministic tests.
 - Config: per-job-type `LLMPolicy` defaults (`LLM_TIMEOUT_SECONDS`, `LLM_MAX_COST_CENTS`, …).
@@ -416,11 +428,14 @@ New event types (define in `domain.go`): `EventLLMTimeout = "llm.timeout"`, `Eve
 
 ### Verification
 #### Automated
-- [ ] `make verify` passes
-- [ ] executor test: invalid JSON/schema → never `success` (retries then `failed`); `llm.validation_failed` emitted
-- [ ] timeout → `llm.timeout` emitted, retried within budget
-- [ ] cost over `max_daily_llm_cost_cents` → rejected/deferred before any model call
+- [x] `make sqlc-generate` regenerates without error
+- [x] `make mock-gen` regenerates task mocks
+- [x] `make verify` passes
+- [x] executor test: invalid JSON/schema → never `success` (retries then `failed`); `llm.validation_failed` emitted
+- [x] timeout → `llm.timeout` emitted, retried within budget
+- [x] cost over `max_daily_llm_cost_cents` → rejected/deferred before any model call
 #### Manual
+- [ ] `make migrate-up` applies `0008`; `jobs.job_type` exists and defaults to `generic_llm`
 - [ ] `curl /metrics | grep task_llm_` shows LLM series
 
 ---
@@ -430,9 +445,9 @@ New event types (define in `domain.go`): `EventLLMTimeout = "llm.timeout"`, `Eve
 - §6 MCP tools: improved `task.create`/`task.status` (P1/P4), `task.runs`/`task.events` (P2).
 - §7 scheduler API: all `/jobs` + `/runs` endpoints (P1/P2).
 - §8 timezone + DST (P4). §9 job chains + cancel policy (P6). §10 idempotency (P5).
-- §11 LLM reliability (P7). §12 quotas (P3); **fair/per-tenant queues excluded** (design "Not Doing") — `tenant_id` in `JobRunMsg` (P5) keeps the door open.
+- §11 LLM reliability + persisted `generic_llm` dispatch contract (P7). §12 quotas (P3); **fair/per-tenant queues excluded** (design "Not Doing") — `tenant_id` in `JobRunMsg` (P5) keeps the door open.
 - §13 observability: metrics + typed events per phase; **Grafana dashboards/Alertmanager provisioning excluded** (design "Not Doing"); alert *thresholds* documented, not wired.
-- §14 lifecycle events (P2/P6/P7). §15 migration plan: stacked `0002–0007` (all phases).
+- §14 lifecycle events (P2/P6/P7). §15 migration plan: stacked `0002–0008` (all phases).
 - §16 implementation plan / §17 acceptance / §18 tests: each phase's Verification maps to the matching acceptance + test-plan items.
 
 ---

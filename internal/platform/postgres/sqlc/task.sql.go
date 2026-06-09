@@ -137,7 +137,7 @@ func (q *Queries) CountJobsCreatedSince(ctx context.Context, arg CountJobsCreate
 const findChildJobs = `-- name: FindChildJobs :many
 SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
        scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
-       side_effecting, idempotency_scope, parent_job_id, trigger_on_parent_status,
+       side_effecting, idempotency_scope, parent_job_id, trigger_on_parent_status, job_type,
        created_at, updated_at
 FROM jobs
 WHERE parent_job_id = $1
@@ -167,6 +167,7 @@ type FindChildJobsRow struct {
 	IdempotencyScope      string
 	ParentJobID           pgtype.UUID
 	TriggerOnParentStatus *string
+	JobType               string
 	CreatedAt             pgtype.Timestamptz
 	UpdatedAt             pgtype.Timestamptz
 }
@@ -197,6 +198,7 @@ func (q *Queries) FindChildJobs(ctx context.Context, arg FindChildJobsParams) ([
 			&i.IdempotencyScope,
 			&i.ParentJobID,
 			&i.TriggerOnParentStatus,
+			&i.JobType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -312,7 +314,7 @@ const getJobByID = `-- name: GetJobByID :one
 SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
        scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
        side_effecting, idempotency_scope,
-       parent_job_id, trigger_on_parent_status,
+       parent_job_id, trigger_on_parent_status, job_type,
        created_at, updated_at
 FROM jobs WHERE id = $1
 `
@@ -334,6 +336,7 @@ type GetJobByIDRow struct {
 	IdempotencyScope      string
 	ParentJobID           pgtype.UUID
 	TriggerOnParentStatus *string
+	JobType               string
 	CreatedAt             pgtype.Timestamptz
 	UpdatedAt             pgtype.Timestamptz
 }
@@ -358,6 +361,7 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow
 		&i.IdempotencyScope,
 		&i.ParentJobID,
 		&i.TriggerOnParentStatus,
+		&i.JobType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -443,14 +447,15 @@ const insertJob = `-- name: InsertJob :exec
 INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
                   scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
                   side_effecting, idempotency_scope,
-                  parent_job_id, trigger_on_parent_status,
+                  parent_job_id, trigger_on_parent_status, job_type,
                   created_at, updated_at)
 VALUES ($1, $2, $3, $4,
         $5, $6, $7,
         $8, $9, $10,
         $11, $12, $13,
         $14, $15, $16,
-        $17, $18)
+        $17,
+        $18, $19)
 `
 
 type InsertJobParams struct {
@@ -470,6 +475,7 @@ type InsertJobParams struct {
 	IdempotencyScope      string
 	ParentJobID           pgtype.UUID
 	TriggerOnParentStatus *string
+	JobType               string
 	CreatedAt             pgtype.Timestamptz
 	UpdatedAt             pgtype.Timestamptz
 }
@@ -492,6 +498,7 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.IdempotencyScope,
 		arg.ParentJobID,
 		arg.TriggerOnParentStatus,
+		arg.JobType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

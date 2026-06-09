@@ -19,6 +19,7 @@ type Config struct {
 	OTel   OTelConfig
 	Logger LoggerConfig
 	Quota  QuotaConfig
+	LLM    LLMConfig
 }
 
 type AppConfig struct {
@@ -67,6 +68,15 @@ type QuotaConfig struct {
 	MaxDailyLLMCostCents int `mapstructure:"max_daily_llm_cost_cents"`
 }
 
+type LLMConfig struct {
+	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
+	MaxRetries      int    `mapstructure:"max_retries"`
+	MaxInputTokens  int    `mapstructure:"max_input_tokens"`
+	MaxOutputTokens int    `mapstructure:"max_output_tokens"`
+	MaxCostCents    int    `mapstructure:"max_cost_cents"`
+	OutputSchema    string `mapstructure:"output_schema"`
+}
+
 // Load reads config from env (with .env fallback). Env vars are upper-cased
 // and underscored, e.g. APP_ENV, POSTGRES_DSN.
 func Load() (*Config, error) {
@@ -103,6 +113,12 @@ func load(requireJWT bool) (*Config, error) {
 	v.SetDefault("quota.max_active_recurring_jobs", 20)
 	v.SetDefault("quota.max_concurrent_runs", 10)
 	v.SetDefault("quota.max_daily_llm_cost_cents", 1000)
+	v.SetDefault("llm.timeout_seconds", 30)
+	v.SetDefault("llm.max_retries", 3)
+	v.SetDefault("llm.max_input_tokens", 4096)
+	v.SetDefault("llm.max_output_tokens", 1024)
+	v.SetDefault("llm.max_cost_cents", 100)
+	v.SetDefault("llm.output_schema", "{}")
 
 	// Env mapping: APP_ENV → app.env
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -133,6 +149,12 @@ func load(requireJWT bool) (*Config, error) {
 		"quota.max_active_recurring_jobs": "QUOTA_MAX_ACTIVE_RECURRING_JOBS",
 		"quota.max_concurrent_runs":       "QUOTA_MAX_CONCURRENT_RUNS",
 		"quota.max_daily_llm_cost_cents":  "QUOTA_MAX_DAILY_LLM_COST_CENTS",
+		"llm.timeout_seconds":             "LLM_TIMEOUT_SECONDS",
+		"llm.max_retries":                 "LLM_MAX_RETRIES",
+		"llm.max_input_tokens":            "LLM_MAX_INPUT_TOKENS",
+		"llm.max_output_tokens":           "LLM_MAX_OUTPUT_TOKENS",
+		"llm.max_cost_cents":              "LLM_MAX_COST_CENTS",
+		"llm.output_schema":               "LLM_OUTPUT_SCHEMA",
 	}
 	for k, env := range binds {
 		_ = v.BindEnv(k, env)

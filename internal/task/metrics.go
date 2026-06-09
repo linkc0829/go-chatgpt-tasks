@@ -1,6 +1,8 @@
 package task
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 
@@ -8,11 +10,15 @@ import (
 )
 
 type Metrics struct {
-	runs            *prometheus.CounterVec
-	dur             prometheus.Histogram
-	dlq             prometheus.Counter
-	quotaRejections prometheus.Counter
-	logger          *zap.Logger
+	runs                  *prometheus.CounterVec
+	dur                   prometheus.Histogram
+	dlq                   prometheus.Counter
+	quotaRejections       prometheus.Counter
+	llmLatency            prometheus.Histogram
+	llmTimeouts           prometheus.Counter
+	llmValidationFailures prometheus.Counter
+	llmCostCents          prometheus.Counter
+	logger                *zap.Logger
 }
 
 func NewMetrics(reg *prometheus.Registry, logger *zap.Logger) *Metrics {
@@ -34,10 +40,50 @@ func NewMetrics(reg *prometheus.Registry, logger *zap.Logger) *Metrics {
 			Name: "task_quota_rejections_total",
 			Help: "Total task creation requests rejected by tenant quotas.",
 		}),
+		llmLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "task_llm_latency_seconds",
+			Help: "LLM request latency in seconds.",
+		}),
+		llmTimeouts: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "task_llm_timeouts_total",
+			Help: "Total timed out LLM requests.",
+		}),
+		llmValidationFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "task_llm_validation_failures_total",
+			Help: "Total LLM responses rejected by output validation.",
+		}),
+		llmCostCents: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "task_llm_cost_cents",
+			Help: "Total estimated LLM cost in cents.",
+		}),
 		logger: logger,
 	}
-	reg.MustRegister(m.runs, m.dur, m.dlq, m.quotaRejections)
+	reg.MustRegister(m.runs, m.dur, m.dlq, m.quotaRejections, m.llmLatency, m.llmTimeouts, m.llmValidationFailures, m.llmCostCents)
 	return m
+}
+
+func (m *Metrics) recordLLMLatency(d time.Duration) {
+	if m != nil {
+		m.llmLatency.Observe(d.Seconds())
+	}
+}
+
+func (m *Metrics) recordLLMTimeout() {
+	if m != nil {
+		m.llmTimeouts.Inc()
+	}
+}
+
+func (m *Metrics) recordLLMValidationFailure() {
+	if m != nil {
+		m.llmValidationFailures.Inc()
+	}
+}
+
+func (m *Metrics) recordLLMCost(cost int) {
+	if m != nil {
+		m.llmCostCents.Add(float64(cost))
+	}
 }
 
 func (m *Metrics) recordRun(run *JobRun) {

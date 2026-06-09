@@ -58,6 +58,10 @@ type Executor interface {
 	Execute(ctx context.Context, r *JobRun) error
 }
 
+type LLMClient interface {
+	Complete(ctx context.Context, req LLMRequest) (LLMResponse, error)
+}
+
 type TenantResolver interface {
 	ResolveTenant(ctx context.Context, userID shared.UserID) (shared.TenantID, error)
 }
