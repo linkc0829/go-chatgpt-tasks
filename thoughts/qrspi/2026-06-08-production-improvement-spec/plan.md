@@ -187,9 +187,9 @@ add a `Registry.Underlying() *prometheus.Registry` accessor in `internal/platfor
 - [x] worker test asserts a `run_events` row with `event_type='job_run.started'` then `…succeeded`
 - [x] failure test asserts `event_type='job_run.failed'` + `error_message` populated on the run
 #### Manual
-- [ ] `make migrate-up` applies `0003`
-- [ ] `GET /runs/{id}/events` returns ordered typed events
-- [ ] `curl /metrics | grep task_runs_total` shows the series
+- [x] `make migrate-up` applies `0003`
+- [x] `GET /runs/{id}/events` returns ordered typed events
+- [x] `curl /metrics | grep task_runs_total` shows the series
 
 ---
 
