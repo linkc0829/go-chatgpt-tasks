@@ -381,7 +381,7 @@ CREATE INDEX idx_jobs_parent ON jobs (parent_job_id);
 - [x] worker test: parent `success` creates+enqueues child with `child_job.enqueued`; child not created before parent terminal
 - [x] service test: cancelling parent cancels a pending child, leaves a running child
 #### Manual
-- [ ] `make migrate-up` applies `0007`
+- [x] `make migrate-up` applies `0007`
 
 ---
 
