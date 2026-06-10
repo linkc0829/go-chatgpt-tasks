@@ -108,6 +108,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*App, error) {
 	// Health & metrics routes (no auth)
 	engine.GET("/healthz", metrics.Health())
 	engine.GET("/metrics", metricsReg.Handler())
+	httpserver.RegisterDemo(engine)
 
 	// ----- Wire feature slices -----------------------------------------
 	// All cross-feature port wiring happens in wire.go.
