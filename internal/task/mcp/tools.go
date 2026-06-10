@@ -28,7 +28,7 @@ type CreateArgs struct {
 	ScheduledAt             string             `json:"scheduled_at,omitempty" jsonschema:"RFC3339 scheduled time for one-off jobs"`
 	RecurringIntervalSecond int64              `json:"recurring_interval_seconds,omitempty" jsonschema:"Optional recurring interval in seconds"`
 	ScheduleType            taskdomain.Kind    `json:"schedule_type,omitempty" jsonschema:"one_off or recurring"`
-	RecurrenceRule          string             `json:"recurrence_rule,omitempty" jsonschema:"FREQ=DAILY or FREQ=WEEKLY with optional INTERVAL"`
+	RecurrenceRule          string             `json:"recurrence_rule,omitempty" jsonschema:"Recurrence rule such as FREQ=DAILY or FREQ=WEEKLY with optional INTERVAL"`
 	LocalTime               string             `json:"local_time,omitempty" jsonschema:"Local wall-clock time in HH:MM format"`
 	TimezoneID              string             `json:"timezone_id,omitempty" jsonschema:"IANA timezone identifier"`
 	OriginalUserText        string             `json:"original_user_text,omitempty" jsonschema:"Original scheduling request text"`

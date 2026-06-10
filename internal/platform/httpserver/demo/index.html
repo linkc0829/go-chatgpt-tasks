@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Task Scheduler Demo</title>
+  <link rel="stylesheet" href="/demo/app.css">
+  <style>
+    .failure{margin:-10px 0 20px;padding:12px;border:1px solid #f0cbd0;border-radius:8px;color:var(--red);background:#fff5f6}
+    .failure span{display:block;margin-bottom:4px;font-size:9px;font-weight:800}
+    .failure strong{font-size:11px;overflow-wrap:anywhere}
+    .timeline p{margin:6px 0 0;color:#b44b55;overflow-wrap:anywhere}
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast"></div>
+
+  <main id="auth-view" class="auth-shell">
+    <section class="hero">
+      <div class="brand"><span class="logo">T</span> Taskflow</div>
+      <div>
+        <span class="eyebrow">SCHEDULED AI TASKS</span>
+        <h1>Automate work.<br><em>See every run.</em></h1>
+        <p>Register, schedule jobs, inspect lifecycle events, and cancel pending work from one demo workspace.</p>
+      </div>
+      <div class="pipeline"><span>Pending</span><i></i><span>Queued</span><i></i><span>Running</span><i></i><span>Success</span></div>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-card">
+        <span class="eyebrow">API DEMO</span>
+        <h2 id="auth-title">Welcome back</h2>
+        <p id="auth-copy">Sign in to manage scheduled jobs.</p>
+        <form id="auth-form">
+          <div id="name-field" class="hidden"><label for="display-name">Display name</label><input id="display-name" autocomplete="name"></div>
+          <label for="email">Email</label><input id="email" type="email" autocomplete="email" required>
+          <label for="password">Password</label><input id="password" type="password" minlength="8" autocomplete="current-password" required>
+          <p id="auth-error" class="error hidden"></p>
+          <button id="auth-submit" class="primary" type="submit">Sign in <span>→</span></button>
+        </form>
+        <button id="auth-switch" class="link">Need an account? Register</button>
+      </div>
+    </section>
+  </main>
+
+  <main id="app-view" class="app hidden">
+    <aside>
+      <div class="brand"><span class="logo">T</span> Taskflow</div>
+      <nav><button class="active">Overview</button><button id="refresh-nav">Jobs</button><button>Runs</button><button>Events</button></nav>
+      <div class="profile"><span id="avatar">U</span><div><strong id="profile-name">User</strong><small id="profile-email"></small></div><button id="logout">↗</button></div>
+    </aside>
+    <section class="workspace">
+      <header><div><span class="eyebrow">TASK SCHEDULER</span><h1>Jobs overview</h1></div><button id="new-job" class="primary">＋ New job</button></header>
+      <div class="metrics">
+        <article><span>Total runs</span><strong id="total-count">0</strong><small>Latest 100 runs</small></article>
+        <article><span>Pending</span><strong id="pending-count">0</strong><small>Waiting to execute</small></article>
+        <article><span>Running</span><strong id="running-count">0</strong><small>In progress now</small></article>
+        <article><span>Successful</span><strong id="success-count">0</strong><small>Completed runs</small></article>
+      </div>
+      <section class="card">
+        <div class="card-head"><div><h2>Recent jobs</h2><p>Select a run to inspect its history and events.</p></div><div class="actions"><input id="search" type="search" placeholder="Search job ID or status"><button id="refresh" class="secondary">Refresh</button></div></div>
+        <div class="table-wrap"><table><thead><tr><th>JOB</th><th>STATUS</th><th>SCHEDULED</th><th>ATTEMPTS</th><th>UPDATED</th><th></th></tr></thead><tbody id="runs"></tbody></table></div>
+        <div id="empty" class="empty hidden">No job runs yet. Create one to start the demo.</div>
+      </section>
+    </section>
+  </main>
+
+  <div id="modal" class="backdrop hidden">
+    <section class="modal"><button class="close" data-close="modal">×</button><span class="eyebrow">NEW JOB</span><h2>Schedule a task</h2>
+      <form id="job-form">
+        <label for="description">Task description</label><textarea id="description" placeholder="Summarize today's customer feedback" required></textarea>
+        <label for="scheduled-at">Run at</label><input id="scheduled-at" type="datetime-local" required>
+        <label class="check"><input id="recurring" type="checkbox"> Repeat on an interval</label>
+        <div id="interval-field" class="hidden"><label for="interval">Interval in minutes</label><input id="interval" type="number" min="1" value="60"></div>
+        <p id="job-error" class="error hidden"></p><button class="primary" type="submit">Create job <span>→</span></button>
+      </form>
+    </section>
+  </div>
+
+  <div id="drawer" class="drawer">
+    <button class="close" data-close="drawer">×</button><span class="eyebrow">RUN DETAILS</span><h2 id="drawer-title"></h2>
+    <div id="run-detail"></div>
+    <div class="drawer-actions"><button id="cancel-job" class="danger">Cancel pending runs</button><button id="reload-detail" class="secondary">Reload</button></div>
+    <h3>Job run history</h3><div id="history" class="timeline"></div>
+    <h3>Lifecycle events</h3><div id="events" class="timeline"></div>
+  </div>
+  <script src="/demo/app.js"></script>
+</body>
+</html>

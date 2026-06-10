@@ -6,7 +6,9 @@
       "Bash(where.exe docker *)",
       "Bash(docker --version)",
       "Bash(rg -n \"EventQuotaRejected|EventQuotaDeferred|quota.rejected|quota.deferred\" internal/task/*.go)",
-      "Bash(rg -n \"CREATE TABLE jobs\" -A 25 migrations/0001_*.up.sql)"
+      "Bash(rg -n \"CREATE TABLE jobs\" -A 25 migrations/0001_*.up.sql)",
+      "Bash(gh pr *)",
+      "Bash(git push *)"
     ]
   }
 }
