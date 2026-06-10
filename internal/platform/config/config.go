@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -17,6 +18,9 @@ type Config struct {
 	JWT    JWTConfig
 	OTel   OTelConfig
 	Logger LoggerConfig
+	Quota  QuotaConfig
+	LLM    LLMConfig
+	Task   TaskConfig
 }
 
 type AppConfig struct {
@@ -58,6 +62,26 @@ type LoggerConfig struct {
 	Encoding string `mapstructure:"encoding"`
 }
 
+type QuotaConfig struct {
+	MaxJobsPerHour       int `mapstructure:"max_jobs_per_hour"`
+	MaxActiveRecurring   int `mapstructure:"max_active_recurring_jobs"`
+	MaxConcurrentRuns    int `mapstructure:"max_concurrent_runs"`
+	MaxDailyLLMCostCents int `mapstructure:"max_daily_llm_cost_cents"`
+}
+
+type LLMConfig struct {
+	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
+	MaxRetries      int    `mapstructure:"max_retries"`
+	MaxInputTokens  int    `mapstructure:"max_input_tokens"`
+	MaxOutputTokens int    `mapstructure:"max_output_tokens"`
+	MaxCostCents    int    `mapstructure:"max_cost_cents"`
+	OutputSchema    string `mapstructure:"output_schema"`
+}
+
+type TaskConfig struct {
+	WorkerCount int `mapstructure:"worker_count"`
+}
+
 // Load reads config from env (with .env fallback). Env vars are upper-cased
 // and underscored, e.g. APP_ENV, POSTGRES_DSN.
 func Load() (*Config, error) {
@@ -90,6 +114,17 @@ func load(requireJWT bool) (*Config, error) {
 	v.SetDefault("otel.service_name", "go-chatgpt-tasks")
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("logger.encoding", "json")
+	v.SetDefault("quota.max_jobs_per_hour", 100)
+	v.SetDefault("quota.max_active_recurring_jobs", 20)
+	v.SetDefault("quota.max_concurrent_runs", 10)
+	v.SetDefault("quota.max_daily_llm_cost_cents", 1000)
+	v.SetDefault("llm.timeout_seconds", 30)
+	v.SetDefault("llm.max_retries", 3)
+	v.SetDefault("llm.max_input_tokens", 4096)
+	v.SetDefault("llm.max_output_tokens", 1024)
+	v.SetDefault("llm.max_cost_cents", 100)
+	v.SetDefault("llm.output_schema", "{}")
+	v.SetDefault("task.worker_count", 3)
 
 	// Env mapping: APP_ENV → app.env
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -98,24 +133,35 @@ func load(requireJWT bool) (*Config, error) {
 	// Manual binds (viper's automatic binding doesn't traverse nested keys
 	// reliably for unset envs).
 	binds := map[string]string{
-		"app.env":              "APP_ENV",
-		"app.name":             "APP_NAME",
-		"app.shutdown_timeout": "APP_SHUTDOWN_TIMEOUT",
-		"http.port":            "APP_PORT",
-		"db.dsn":               "POSTGRES_DSN",
-		"db.max_conns":         "POSTGRES_MAX_CONNS",
-		"db.min_conns":         "POSTGRES_MIN_CONNS",
-		"redis.addr":           "REDIS_ADDR",
-		"redis.password":       "REDIS_PASSWORD",
-		"redis.db":             "REDIS_DB",
-		"jwt.secret":           "JWT_SECRET",
-		"jwt.issuer":           "JWT_ISSUER",
-		"jwt.ttl":              "JWT_TTL",
-		"otel.enabled":         "OTEL_ENABLED",
-		"otel.endpoint":        "OTEL_ENDPOINT",
-		"otel.service_name":    "OTEL_SERVICE_NAME",
-		"logger.level":         "LOG_LEVEL",
-		"logger.encoding":      "LOG_ENCODING",
+		"app.env":                         "APP_ENV",
+		"app.name":                        "APP_NAME",
+		"app.shutdown_timeout":            "APP_SHUTDOWN_TIMEOUT",
+		"http.port":                       "APP_PORT",
+		"db.dsn":                          "POSTGRES_DSN",
+		"db.max_conns":                    "POSTGRES_MAX_CONNS",
+		"db.min_conns":                    "POSTGRES_MIN_CONNS",
+		"redis.addr":                      "REDIS_ADDR",
+		"redis.password":                  "REDIS_PASSWORD",
+		"redis.db":                        "REDIS_DB",
+		"jwt.secret":                      "JWT_SECRET",
+		"jwt.issuer":                      "JWT_ISSUER",
+		"jwt.ttl":                         "JWT_TTL",
+		"otel.enabled":                    "OTEL_ENABLED",
+		"otel.endpoint":                   "OTEL_ENDPOINT",
+		"otel.service_name":               "OTEL_SERVICE_NAME",
+		"logger.level":                    "LOG_LEVEL",
+		"logger.encoding":                 "LOG_ENCODING",
+		"quota.max_jobs_per_hour":         "QUOTA_MAX_JOBS_PER_HOUR",
+		"quota.max_active_recurring_jobs": "QUOTA_MAX_ACTIVE_RECURRING_JOBS",
+		"quota.max_concurrent_runs":       "QUOTA_MAX_CONCURRENT_RUNS",
+		"quota.max_daily_llm_cost_cents":  "QUOTA_MAX_DAILY_LLM_COST_CENTS",
+		"llm.timeout_seconds":             "LLM_TIMEOUT_SECONDS",
+		"llm.max_retries":                 "LLM_MAX_RETRIES",
+		"llm.max_input_tokens":            "LLM_MAX_INPUT_TOKENS",
+		"llm.max_output_tokens":           "LLM_MAX_OUTPUT_TOKENS",
+		"llm.max_cost_cents":              "LLM_MAX_COST_CENTS",
+		"llm.output_schema":               "LLM_OUTPUT_SCHEMA",
+		"task.worker_count":               "TASK_WORKER_COUNT",
 	}
 	for k, env := range binds {
 		_ = v.BindEnv(k, env)
@@ -126,6 +172,14 @@ func load(requireJWT bool) (*Config, error) {
 	v.SetConfigType("env")
 	v.AddConfigPath(".")
 	_ = v.ReadInConfig() // ignore if missing
+	for key, env := range binds {
+		if _, ok := os.LookupEnv(env); ok {
+			continue
+		}
+		if v.IsSet(env) {
+			v.Set(key, v.Get(env))
+		}
+	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -144,6 +198,9 @@ func (c *Config) validate(requireJWT bool) error {
 	}
 	if requireJWT && c.JWT.Secret == "" {
 		return fmt.Errorf("JWT_SECRET is required")
+	}
+	if c.Task.WorkerCount < 1 {
+		return fmt.Errorf("TASK_WORKER_COUNT must be greater than zero")
 	}
 	return nil
 }

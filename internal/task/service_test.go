@@ -20,6 +20,7 @@ type fakeRepo struct {
 	saveJobErr        error
 	saveRunErr        error
 	updateRunErr      error
+	appendEventErr    error
 	findRunErr        error
 	findRun           *JobRun
 	listRuns          []*JobRun
@@ -37,6 +38,9 @@ type fakeRepo struct {
 	lastSavedRun      *JobRun
 	lastUpdatedRun    *JobRun
 	lastAppendedEvent *RunEvent
+	appendedEvents    []*RunEvent
+	children          []*Job
+	childRuns         []*JobRun
 }
 
 func (f *fakeRepo) SaveJob(_ context.Context, j *Job) error {
@@ -51,24 +55,81 @@ func (f *fakeRepo) SaveRun(_ context.Context, r *JobRun) error {
 	return f.saveRunErr
 }
 
+func (f *fakeRepo) CreateJobWithRun(ctx context.Context, j *Job, run *JobRun, events []*RunEvent) error {
+	if err := f.SaveJob(ctx, j); err != nil {
+		return err
+	}
+	if err := f.SaveRun(ctx, run); err != nil {
+		return err
+	}
+	for _, e := range events {
+		if err := f.AppendEvent(ctx, e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (f *fakeRepo) UpdateRunStatus(_ context.Context, r *JobRun) error {
 	f.updateRunCalls++
 	f.lastUpdatedRun = r
 	return f.updateRunErr
+}
+func (f *fakeRepo) PersistRunTransition(_ context.Context, run *JobRun, event *RunEvent) error {
+	if err := f.UpdateRunStatus(context.Background(), run); err != nil {
+		return err
+	}
+	return f.AppendEvent(context.Background(), event)
+}
+func (f *fakeRepo) TryMarkRunRunning(context.Context, *JobRun, *RunEvent, int) (bool, error) {
+	return true, nil
+}
+func (f *fakeRepo) CancelPendingRunsByJob(_ context.Context, tenantID shared.TenantID, jobID shared.JobID) ([]*JobRun, error) {
+	var cancelled []*JobRun
+	for _, run := range append([]*JobRun{f.findRun}, f.childRuns...) {
+		if run == nil || run.TenantID() != tenantID || run.JobID() != jobID {
+			continue
+		}
+		if run.Status() != StatusPending && run.Status() != StatusQueued && run.Status() != StatusRetry {
+			continue
+		}
+		if err := run.Cancel(); err != nil {
+			return nil, err
+		}
+		f.updateRunCalls++
+		f.lastUpdatedRun = run
+		cancelled = append(cancelled, run)
+	}
+	return cancelled, nil
 }
 
 func (f *fakeRepo) FindRunByID(_ context.Context, _ shared.JobRunID) (*JobRun, error) {
 	return f.findRun, f.findRunErr
 }
 
-func (f *fakeRepo) ListRuns(_ context.Context, _ shared.Pagination) ([]*JobRun, int64, error) {
+func (f *fakeRepo) ListRuns(_ context.Context, _ shared.TenantID, _ shared.Pagination) ([]*JobRun, int64, error) {
 	return f.listRuns, f.listTotal, f.listErr
+}
+
+func (f *fakeRepo) ListRunsByJob(_ context.Context, _ shared.TenantID, _ shared.JobID, _ shared.Pagination) ([]*JobRun, int64, error) {
+	if f.childRuns != nil {
+		return f.childRuns, int64(len(f.childRuns)), f.listErr
+	}
+	return f.listRuns, f.listTotal, f.listErr
+}
+
+func (f *fakeRepo) ListEvents(_ context.Context, _ shared.TenantID, _ shared.JobRunID) ([]*RunEvent, error) {
+	if f.lastAppendedEvent == nil {
+		return nil, nil
+	}
+	return []*RunEvent{f.lastAppendedEvent}, nil
 }
 
 func (f *fakeRepo) AppendEvent(_ context.Context, e *RunEvent) error {
 	f.appendEventCalls++
 	f.lastAppendedEvent = e
-	return nil
+	f.appendedEvents = append(f.appendedEvents, e)
+	return f.appendEventErr
 }
 
 func (f *fakeRepo) FindDueRuns(_ context.Context, _ int64, _ time.Time, _ int32) ([]*JobRun, error) {
@@ -77,6 +138,9 @@ func (f *fakeRepo) FindDueRuns(_ context.Context, _ int64, _ time.Time, _ int32)
 
 func (f *fakeRepo) FindJob(_ context.Context, _ shared.JobID) (*Job, error) {
 	return f.findJob, f.findJobErr
+}
+func (f *fakeRepo) FindChildren(_ context.Context, _ shared.JobID, _ Status) ([]*Job, error) {
+	return f.children, nil
 }
 
 func (f *fakeRepo) InsertRunIfAbsent(_ context.Context, _ *JobRun) (bool, error) {
@@ -88,13 +152,14 @@ func (f *fakeRepo) FindTerminalRecurringRuns(_ context.Context, _ time.Time, _ i
 }
 
 func TestService_Create(t *testing.T) {
+	ident := testIdentity()
 	scheduledAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 
 	t.Run("create_one_off_pending_run", func(t *testing.T) {
 		repo := &fakeRepo{}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
-		run, err := svc.Create(context.Background(), CreateInput{
+		run, err := svc.Create(context.Background(), ident, CreateInput{
 			Description: "Summarize tech news",
 			ScheduledAt: scheduledAt,
 		})
@@ -103,30 +168,68 @@ func TestService_Create(t *testing.T) {
 		assert.Equal(t, 1, repo.saveJobCalls)
 		assert.Equal(t, 1, repo.saveRunCalls)
 		assert.Equal(t, KindOneOff, repo.lastSavedJob.Kind())
+		assert.Equal(t, ident.TenantID, repo.lastSavedJob.TenantID())
+		assert.Equal(t, ident.UserID, repo.lastSavedJob.UserID())
+		assert.Equal(t, ident.TenantID, run.TenantID())
 		assert.Equal(t, StatusPending, run.Status())
 		assert.Equal(t, scheduledAt, run.ScheduledAt())
 	})
 
 	t.Run("create_recurring_job", func(t *testing.T) {
 		repo := &fakeRepo{}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
-		_, err := svc.Create(context.Background(), CreateInput{
-			Description: "Summarize tech news",
-			ScheduledAt: scheduledAt,
-			Interval:    5 * time.Second,
+		_, err := svc.Create(context.Background(), ident, CreateInput{
+			Description:    "Summarize tech news",
+			ScheduleType:   KindRecurring,
+			LocalTime:      "08:00",
+			TimezoneID:     "UTC",
+			RecurrenceRule: "FREQ=DAILY",
 		})
 
 		require.NoError(t, err)
 		assert.Equal(t, KindRecurring, repo.lastSavedJob.Kind())
-		assert.Equal(t, 5*time.Second, repo.lastSavedJob.Interval())
+		assert.Equal(t, "FREQ=DAILY", repo.lastSavedJob.RecurrenceRule())
+	})
+
+	t.Run("emits_creation_lifecycle_events", func(t *testing.T) {
+		repo := &fakeRepo{}
+		svc := NewService(repo, nil)
+
+		_, err := svc.Create(context.Background(), ident, CreateInput{
+			Description: "Summarize tech news",
+			ScheduledAt: scheduledAt,
+		})
+
+		require.NoError(t, err)
+		types := make([]EventType, 0, len(repo.appendedEvents))
+		for _, e := range repo.appendedEvents {
+			types = append(types, e.EventType())
+		}
+		assert.Equal(t, []EventType{EventJobCreated, EventJobRunCreated}, types)
+	})
+
+	t.Run("event_write_failure_is_reported", func(t *testing.T) {
+		repo := &fakeRepo{appendEventErr: errors.New("events unavailable")}
+		svc := NewService(repo, nil)
+
+		_, err := svc.Create(context.Background(), ident, CreateInput{
+			Description: "Summarize tech news",
+			ScheduledAt: scheduledAt,
+		})
+
+		// Creation persists job + run + events in one transaction, so an event
+		// write failure surfaces (is not swallowed) and rolls the whole create back.
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "create job")
+		assert.Contains(t, err.Error(), "events unavailable")
 	})
 
 	t.Run("invalid_description", func(t *testing.T) {
 		repo := &fakeRepo{}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
-		_, err := svc.Create(context.Background(), CreateInput{
+		_, err := svc.Create(context.Background(), ident, CreateInput{
 			Description: "",
 			ScheduledAt: scheduledAt,
 		})
@@ -137,41 +240,107 @@ func TestService_Create(t *testing.T) {
 	})
 }
 
+func TestService_TenantIsolation(t *testing.T) {
+	tenantA := testIdentity()
+	tenantB := Identity{TenantID: shared.NewTenantID(), UserID: shared.NewUserID()}
+	scheduledAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	t.Run("list_is_scoped_by_tenant", func(t *testing.T) {
+		repo := &fakeRepo{listRuns: []*JobRun{}, listTotal: 0}
+		svc := NewService(repo, nil)
+
+		runs, total, err := svc.List(context.Background(), tenantB, shared.NewPagination(20, 0))
+
+		require.NoError(t, err)
+		assert.Empty(t, runs)
+		assert.Equal(t, int64(0), total)
+	})
+
+	t.Run("status_hides_cross_tenant_run", func(t *testing.T) {
+		run, err := NewJobRun(tenantA.TenantID, shared.NewJobID(), 1, scheduledAt)
+		require.NoError(t, err)
+		job, err := NewJob(tenantA.TenantID, tenantA.UserID, "test", ScheduleSpec{
+			Type: KindOneOff, ScheduledAtUTC: scheduledAt, TimezoneID: "UTC",
+		})
+		require.NoError(t, err)
+		repo := &fakeRepo{listRuns: []*JobRun{run}, findJob: job}
+		svc := NewService(repo, nil)
+
+		_, err = svc.Status(context.Background(), tenantB, run.JobID())
+
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrJobRunNotFound), "Status() error = %v, want %v", err, ErrJobRunNotFound)
+	})
+}
+
 func TestService_Cancel(t *testing.T) {
 	t.Run("cancel_pending_run", func(t *testing.T) {
 		run := newTestRun(t)
-		repo := &fakeRepo{findRun: run}
-		svc := NewService(repo)
+		job := newTestJobForRun(t, run)
+		repo := &fakeRepo{findRun: run, findJob: job}
+		svc := NewService(repo, nil)
 
-		got, err := svc.Cancel(context.Background(), run.ID())
+		got, err := svc.Cancel(context.Background(), identityForRun(run), run.JobID())
 
 		require.NoError(t, err)
-		assert.Equal(t, StatusCancelled, got.Status())
+		require.Len(t, got, 1)
+		assert.Equal(t, StatusCancelled, got[0].Status())
 		assert.Equal(t, 1, repo.updateRunCalls)
 		assert.Equal(t, 1, repo.appendEventCalls)
 		assert.Equal(t, StatusCancelled, repo.lastAppendedEvent.Status())
+		assert.Equal(t, EventJobCancelled, repo.lastAppendedEvent.EventType())
 	})
 
-	t.Run("cancel_terminal_rejected", func(t *testing.T) {
+	t.Run("cancel_terminal_run_is_noop", func(t *testing.T) {
 		run := newTestRun(t)
 		require.NoError(t, run.MarkQueued())
 		require.NoError(t, run.MarkRunning())
 		require.NoError(t, run.MarkSuccess())
-		repo := &fakeRepo{findRun: run}
-		svc := NewService(repo)
+		job := newTestJobForRun(t, run)
+		repo := &fakeRepo{findRun: run, findJob: job}
+		svc := NewService(repo, nil)
 
-		_, err := svc.Cancel(context.Background(), run.ID())
+		got, err := svc.Cancel(context.Background(), identityForRun(run), run.JobID())
 
-		require.Error(t, err)
-		assert.True(t, errors.Is(err, ErrInvalidStatusTransition), "Cancel() error = %v, want %v", err, ErrInvalidStatusTransition)
+		require.NoError(t, err)
+		assert.Empty(t, got)
 		assert.Equal(t, 0, repo.updateRunCalls)
+	})
+
+	t.Run("cancel_parent_cancels_pending_child_but_leaves_running_child", func(t *testing.T) {
+		parent := newTestRun(t)
+		parentJobID := parent.JobID()
+		child, err := NewJob(parent.TenantID(), shared.NewUserID(), "child", ScheduleSpec{
+			Type:                  KindOneOff,
+			ScheduledAtUTC:        time.Now().UTC(),
+			TimezoneID:            "UTC",
+			ParentJobID:           &parentJobID,
+			TriggerOnParentStatus: StatusSuccess,
+		})
+		require.NoError(t, err)
+		pending, err := NewJobRun(parent.TenantID(), child.ID(), 1, time.Now().UTC())
+		require.NoError(t, err)
+		running, err := NewJobRun(parent.TenantID(), child.ID(), 2, time.Now().UTC())
+		require.NoError(t, err)
+		require.NoError(t, running.MarkQueued())
+		require.NoError(t, running.MarkRunning())
+		job := newTestJobForRun(t, parent)
+		repo := &fakeRepo{findRun: parent, findJob: job, children: []*Job{child}, childRuns: []*JobRun{pending, running}}
+		svc := NewService(repo, nil)
+
+		_, err = svc.Cancel(context.Background(), identityForRun(parent), parent.JobID())
+
+		require.NoError(t, err)
+		assert.Equal(t, StatusCancelled, pending.Status())
+		assert.Equal(t, StatusRunning, running.Status())
+		assert.Equal(t, 2, repo.updateRunCalls)
 	})
 
 	t.Run("status_not_found", func(t *testing.T) {
 		repo := &fakeRepo{findRunErr: ErrJobRunNotFound}
-		svc := NewService(repo)
+		svc := NewService(repo, nil)
 
-		_, err := svc.Status(context.Background(), shared.NewJobRunID())
+		_, err := svc.Status(context.Background(), testIdentity(), shared.NewJobID())
 
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, ErrJobRunNotFound), "Status() error = %v, want %v", err, ErrJobRunNotFound)
@@ -182,10 +351,31 @@ func newTestRun(t *testing.T) *JobRun {
 	t.Helper()
 
 	run, err := NewJobRun(
+		testIdentity().TenantID,
 		shared.NewJobID(),
 		1,
 		time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
 	)
 	require.NoError(t, err)
 	return run
+}
+
+func testIdentity() Identity {
+	return Identity{TenantID: shared.NewTenantID(), UserID: shared.NewUserID()}
+}
+
+func identityForRun(run *JobRun) Identity {
+	return Identity{TenantID: run.TenantID(), UserID: shared.NewUserID()}
+}
+
+func newTestJobForRun(t *testing.T, run *JobRun) *Job {
+	t.Helper()
+	job, err := NewJob(run.TenantID(), shared.NewUserID(), "test", ScheduleSpec{
+		Type:           KindOneOff,
+		ScheduledAtUTC: run.ScheduledAt(),
+		TimezoneID:     "UTC",
+	})
+	require.NoError(t, err)
+	job.id = run.JobID()
+	return job
 }

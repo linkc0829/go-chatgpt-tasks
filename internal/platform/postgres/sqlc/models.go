@@ -8,32 +8,82 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type IdempotencyRecord struct {
+	IdempotencyKey string
+	JobRunID       pgtype.UUID
+	HandlerName    string
+	Status         string
+	ResponseHash   *string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
 type Job struct {
-	ID              pgtype.UUID
-	Kind            string
-	Description     string
-	IntervalSeconds int64
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID                    pgtype.UUID
+	Kind                  string
+	Description           string
+	IntervalSeconds       int64
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	TenantID              pgtype.UUID
+	UserID                pgtype.UUID
+	ScheduleType          string
+	ScheduledAtUtc        pgtype.Timestamptz
+	RecurrenceRule        *string
+	LocalTime             *string
+	TimezoneID            string
+	OriginalUserText      *string
+	SideEffecting         bool
+	IdempotencyScope      string
+	ParentJobID           pgtype.UUID
+	TriggerOnParentStatus *string
+	JobType               string
 }
 
 type JobRun struct {
-	ID          pgtype.UUID
-	JobID       pgtype.UUID
-	Sequence    int32
-	Status      string
-	ScheduledAt pgtype.Timestamptz
-	TimeBucket  int64
-	Attempts    int32
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID             pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	TenantID       pgtype.UUID
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	IdempotencyKey string
 }
 
 type RunEvent struct {
-	ID        pgtype.UUID
-	JobRunID  pgtype.UUID
-	Status    string
-	CreatedAt pgtype.Timestamptz
+	ID           pgtype.UUID
+	JobRunID     pgtype.UUID
+	Status       string
+	CreatedAt    pgtype.Timestamptz
+	TenantID     pgtype.UUID
+	JobID        pgtype.UUID
+	EventType    string
+	EventPayload []byte
+}
+
+type TenantLlmDailyCost struct {
+	TenantID  pgtype.UUID
+	CostDate  string
+	CostCents int32
+}
+
+type TenantQuota struct {
+	TenantID               pgtype.UUID
+	MaxJobsPerHour         int32
+	MaxActiveRecurringJobs int32
+	MaxConcurrentRuns      int32
+	MaxDailyLlmCostCents   int32
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
 }
 
 type User struct {

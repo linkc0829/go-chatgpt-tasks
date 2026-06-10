@@ -51,6 +51,50 @@ func (mr *MockRepoMockRecorder) AppendEvent(ctx, e interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEvent", reflect.TypeOf((*MockRepo)(nil).AppendEvent), ctx, e)
 }
 
+// CancelPendingRunsByJob mocks base method.
+func (m *MockRepo) CancelPendingRunsByJob(ctx context.Context, tenantID shared.TenantID, jobID shared.JobID) ([]*task.JobRun, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelPendingRunsByJob", ctx, tenantID, jobID)
+	ret0, _ := ret[0].([]*task.JobRun)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CancelPendingRunsByJob indicates an expected call of CancelPendingRunsByJob.
+func (mr *MockRepoMockRecorder) CancelPendingRunsByJob(ctx, tenantID, jobID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelPendingRunsByJob", reflect.TypeOf((*MockRepo)(nil).CancelPendingRunsByJob), ctx, tenantID, jobID)
+}
+
+// CreateJobWithRun mocks base method.
+func (m *MockRepo) CreateJobWithRun(ctx context.Context, j *task.Job, run *task.JobRun, events []*task.RunEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateJobWithRun", ctx, j, run, events)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateJobWithRun indicates an expected call of CreateJobWithRun.
+func (mr *MockRepoMockRecorder) CreateJobWithRun(ctx, j, run, events interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateJobWithRun", reflect.TypeOf((*MockRepo)(nil).CreateJobWithRun), ctx, j, run, events)
+}
+
+// FindChildren mocks base method.
+func (m *MockRepo) FindChildren(ctx context.Context, jobID shared.JobID, status task.Status) ([]*task.Job, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindChildren", ctx, jobID, status)
+	ret0, _ := ret[0].([]*task.Job)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindChildren indicates an expected call of FindChildren.
+func (mr *MockRepoMockRecorder) FindChildren(ctx, jobID, status interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindChildren", reflect.TypeOf((*MockRepo)(nil).FindChildren), ctx, jobID, status)
+}
+
 // FindDueRuns mocks base method.
 func (m *MockRepo) FindDueRuns(ctx context.Context, bucket int64, before time.Time, limit int32) ([]*task.JobRun, error) {
 	m.ctrl.T.Helper()
@@ -126,10 +170,25 @@ func (mr *MockRepoMockRecorder) InsertRunIfAbsent(ctx, r interface{}) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertRunIfAbsent", reflect.TypeOf((*MockRepo)(nil).InsertRunIfAbsent), ctx, r)
 }
 
-// ListRuns mocks base method.
-func (m *MockRepo) ListRuns(ctx context.Context, p shared.Pagination) ([]*task.JobRun, int64, error) {
+// ListEvents mocks base method.
+func (m *MockRepo) ListEvents(ctx context.Context, tenantID shared.TenantID, runID shared.JobRunID) ([]*task.RunEvent, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListRuns", ctx, p)
+	ret := m.ctrl.Call(m, "ListEvents", ctx, tenantID, runID)
+	ret0, _ := ret[0].([]*task.RunEvent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListEvents indicates an expected call of ListEvents.
+func (mr *MockRepoMockRecorder) ListEvents(ctx, tenantID, runID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListEvents", reflect.TypeOf((*MockRepo)(nil).ListEvents), ctx, tenantID, runID)
+}
+
+// ListRuns mocks base method.
+func (m *MockRepo) ListRuns(ctx context.Context, tenantID shared.TenantID, p shared.Pagination) ([]*task.JobRun, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRuns", ctx, tenantID, p)
 	ret0, _ := ret[0].([]*task.JobRun)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
@@ -137,9 +196,39 @@ func (m *MockRepo) ListRuns(ctx context.Context, p shared.Pagination) ([]*task.J
 }
 
 // ListRuns indicates an expected call of ListRuns.
-func (mr *MockRepoMockRecorder) ListRuns(ctx, p interface{}) *gomock.Call {
+func (mr *MockRepoMockRecorder) ListRuns(ctx, tenantID, p interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRuns", reflect.TypeOf((*MockRepo)(nil).ListRuns), ctx, p)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRuns", reflect.TypeOf((*MockRepo)(nil).ListRuns), ctx, tenantID, p)
+}
+
+// ListRunsByJob mocks base method.
+func (m *MockRepo) ListRunsByJob(ctx context.Context, tenantID shared.TenantID, jobID shared.JobID, p shared.Pagination) ([]*task.JobRun, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRunsByJob", ctx, tenantID, jobID, p)
+	ret0, _ := ret[0].([]*task.JobRun)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListRunsByJob indicates an expected call of ListRunsByJob.
+func (mr *MockRepoMockRecorder) ListRunsByJob(ctx, tenantID, jobID, p interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRunsByJob", reflect.TypeOf((*MockRepo)(nil).ListRunsByJob), ctx, tenantID, jobID, p)
+}
+
+// PersistRunTransition mocks base method.
+func (m *MockRepo) PersistRunTransition(ctx context.Context, r *task.JobRun, event *task.RunEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PersistRunTransition", ctx, r, event)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PersistRunTransition indicates an expected call of PersistRunTransition.
+func (mr *MockRepoMockRecorder) PersistRunTransition(ctx, r, event interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PersistRunTransition", reflect.TypeOf((*MockRepo)(nil).PersistRunTransition), ctx, r, event)
 }
 
 // SaveJob mocks base method.
@@ -170,6 +259,21 @@ func (mr *MockRepoMockRecorder) SaveRun(ctx, r interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveRun", reflect.TypeOf((*MockRepo)(nil).SaveRun), ctx, r)
 }
 
+// TryMarkRunRunning mocks base method.
+func (m *MockRepo) TryMarkRunRunning(ctx context.Context, r *task.JobRun, event *task.RunEvent, limit int) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TryMarkRunRunning", ctx, r, event, limit)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TryMarkRunRunning indicates an expected call of TryMarkRunRunning.
+func (mr *MockRepoMockRecorder) TryMarkRunRunning(ctx, r, event, limit interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TryMarkRunRunning", reflect.TypeOf((*MockRepo)(nil).TryMarkRunRunning), ctx, r, event, limit)
+}
+
 // UpdateRunStatus mocks base method.
 func (m *MockRepo) UpdateRunStatus(ctx context.Context, r *task.JobRun) error {
 	m.ctrl.T.Helper()
@@ -182,6 +286,221 @@ func (m *MockRepo) UpdateRunStatus(ctx context.Context, r *task.JobRun) error {
 func (mr *MockRepoMockRecorder) UpdateRunStatus(ctx, r interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunStatus", reflect.TypeOf((*MockRepo)(nil).UpdateRunStatus), ctx, r)
+}
+
+// MockQuotaRepo is a mock of QuotaRepo interface.
+type MockQuotaRepo struct {
+	ctrl     *gomock.Controller
+	recorder *MockQuotaRepoMockRecorder
+}
+
+// MockQuotaRepoMockRecorder is the mock recorder for MockQuotaRepo.
+type MockQuotaRepoMockRecorder struct {
+	mock *MockQuotaRepo
+}
+
+// NewMockQuotaRepo creates a new mock instance.
+func NewMockQuotaRepo(ctrl *gomock.Controller) *MockQuotaRepo {
+	mock := &MockQuotaRepo{ctrl: ctrl}
+	mock.recorder = &MockQuotaRepoMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockQuotaRepo) EXPECT() *MockQuotaRepoMockRecorder {
+	return m.recorder
+}
+
+// AdjustDailyCost mocks base method.
+func (m *MockQuotaRepo) AdjustDailyCost(ctx context.Context, tenantID shared.TenantID, deltaCents int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AdjustDailyCost", ctx, tenantID, deltaCents)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AdjustDailyCost indicates an expected call of AdjustDailyCost.
+func (mr *MockQuotaRepoMockRecorder) AdjustDailyCost(ctx, tenantID, deltaCents interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdjustDailyCost", reflect.TypeOf((*MockQuotaRepo)(nil).AdjustDailyCost), ctx, tenantID, deltaCents)
+}
+
+// CountActiveRecurring mocks base method.
+func (m *MockQuotaRepo) CountActiveRecurring(ctx context.Context, tenantID shared.TenantID) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountActiveRecurring", ctx, tenantID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountActiveRecurring indicates an expected call of CountActiveRecurring.
+func (mr *MockQuotaRepoMockRecorder) CountActiveRecurring(ctx, tenantID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountActiveRecurring", reflect.TypeOf((*MockQuotaRepo)(nil).CountActiveRecurring), ctx, tenantID)
+}
+
+// CountActiveRuns mocks base method.
+func (m *MockQuotaRepo) CountActiveRuns(ctx context.Context, tenantID shared.TenantID) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountActiveRuns", ctx, tenantID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountActiveRuns indicates an expected call of CountActiveRuns.
+func (mr *MockQuotaRepoMockRecorder) CountActiveRuns(ctx, tenantID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountActiveRuns", reflect.TypeOf((*MockQuotaRepo)(nil).CountActiveRuns), ctx, tenantID)
+}
+
+// CountJobsSince mocks base method.
+func (m *MockQuotaRepo) CountJobsSince(ctx context.Context, tenantID shared.TenantID, since time.Time) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountJobsSince", ctx, tenantID, since)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountJobsSince indicates an expected call of CountJobsSince.
+func (mr *MockQuotaRepoMockRecorder) CountJobsSince(ctx, tenantID, since interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountJobsSince", reflect.TypeOf((*MockQuotaRepo)(nil).CountJobsSince), ctx, tenantID, since)
+}
+
+// Get mocks base method.
+func (m *MockQuotaRepo) Get(ctx context.Context, tenantID shared.TenantID) (task.Quota, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, tenantID)
+	ret0, _ := ret[0].(task.Quota)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockQuotaRepoMockRecorder) Get(ctx, tenantID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockQuotaRepo)(nil).Get), ctx, tenantID)
+}
+
+// ReserveDailyCost mocks base method.
+func (m *MockQuotaRepo) ReserveDailyCost(ctx context.Context, tenantID shared.TenantID, costCents, limitCents int) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReserveDailyCost", ctx, tenantID, costCents, limitCents)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReserveDailyCost indicates an expected call of ReserveDailyCost.
+func (mr *MockQuotaRepoMockRecorder) ReserveDailyCost(ctx, tenantID, costCents, limitCents interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveDailyCost", reflect.TypeOf((*MockQuotaRepo)(nil).ReserveDailyCost), ctx, tenantID, costCents, limitCents)
+}
+
+// MockQuotaRejectionRecorder is a mock of QuotaRejectionRecorder interface.
+type MockQuotaRejectionRecorder struct {
+	ctrl     *gomock.Controller
+	recorder *MockQuotaRejectionRecorderMockRecorder
+}
+
+// MockQuotaRejectionRecorderMockRecorder is the mock recorder for MockQuotaRejectionRecorder.
+type MockQuotaRejectionRecorderMockRecorder struct {
+	mock *MockQuotaRejectionRecorder
+}
+
+// NewMockQuotaRejectionRecorder creates a new mock instance.
+func NewMockQuotaRejectionRecorder(ctrl *gomock.Controller) *MockQuotaRejectionRecorder {
+	mock := &MockQuotaRejectionRecorder{ctrl: ctrl}
+	mock.recorder = &MockQuotaRejectionRecorderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockQuotaRejectionRecorder) EXPECT() *MockQuotaRejectionRecorderMockRecorder {
+	return m.recorder
+}
+
+// RecordQuotaRejection mocks base method.
+func (m *MockQuotaRejectionRecorder) RecordQuotaRejection(tenantID shared.TenantID, reason string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RecordQuotaRejection", tenantID, reason)
+}
+
+// RecordQuotaRejection indicates an expected call of RecordQuotaRejection.
+func (mr *MockQuotaRejectionRecorderMockRecorder) RecordQuotaRejection(tenantID, reason interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordQuotaRejection", reflect.TypeOf((*MockQuotaRejectionRecorder)(nil).RecordQuotaRejection), tenantID, reason)
+}
+
+// MockIdempotencyStore is a mock of IdempotencyStore interface.
+type MockIdempotencyStore struct {
+	ctrl     *gomock.Controller
+	recorder *MockIdempotencyStoreMockRecorder
+}
+
+// MockIdempotencyStoreMockRecorder is the mock recorder for MockIdempotencyStore.
+type MockIdempotencyStoreMockRecorder struct {
+	mock *MockIdempotencyStore
+}
+
+// NewMockIdempotencyStore creates a new mock instance.
+func NewMockIdempotencyStore(ctrl *gomock.Controller) *MockIdempotencyStore {
+	mock := &MockIdempotencyStore{ctrl: ctrl}
+	mock.recorder = &MockIdempotencyStoreMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIdempotencyStore) EXPECT() *MockIdempotencyStoreMockRecorder {
+	return m.recorder
+}
+
+// Begin mocks base method.
+func (m *MockIdempotencyStore) Begin(ctx context.Context, key, handler string, runID shared.JobRunID) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Begin", ctx, key, handler, runID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Begin indicates an expected call of Begin.
+func (mr *MockIdempotencyStoreMockRecorder) Begin(ctx, key, handler, runID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Begin", reflect.TypeOf((*MockIdempotencyStore)(nil).Begin), ctx, key, handler, runID)
+}
+
+// Complete mocks base method.
+func (m *MockIdempotencyStore) Complete(ctx context.Context, key, responseHash string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Complete", ctx, key, responseHash)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Complete indicates an expected call of Complete.
+func (mr *MockIdempotencyStoreMockRecorder) Complete(ctx, key, responseHash interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Complete", reflect.TypeOf((*MockIdempotencyStore)(nil).Complete), ctx, key, responseHash)
+}
+
+// Lookup mocks base method.
+func (m *MockIdempotencyStore) Lookup(ctx context.Context, key string) (task.IdempotencyRecord, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Lookup", ctx, key)
+	ret0, _ := ret[0].(task.IdempotencyRecord)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// Lookup indicates an expected call of Lookup.
+func (mr *MockIdempotencyStoreMockRecorder) Lookup(ctx, key interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Lookup", reflect.TypeOf((*MockIdempotencyStore)(nil).Lookup), ctx, key)
 }
 
 // MockQueue is a mock of Queue interface.
@@ -328,4 +647,80 @@ func (m *MockExecutor) Execute(ctx context.Context, r *task.JobRun) error {
 func (mr *MockExecutorMockRecorder) Execute(ctx, r interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockExecutor)(nil).Execute), ctx, r)
+}
+
+// MockLLMClient is a mock of LLMClient interface.
+type MockLLMClient struct {
+	ctrl     *gomock.Controller
+	recorder *MockLLMClientMockRecorder
+}
+
+// MockLLMClientMockRecorder is the mock recorder for MockLLMClient.
+type MockLLMClientMockRecorder struct {
+	mock *MockLLMClient
+}
+
+// NewMockLLMClient creates a new mock instance.
+func NewMockLLMClient(ctrl *gomock.Controller) *MockLLMClient {
+	mock := &MockLLMClient{ctrl: ctrl}
+	mock.recorder = &MockLLMClientMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockLLMClient) EXPECT() *MockLLMClientMockRecorder {
+	return m.recorder
+}
+
+// Complete mocks base method.
+func (m *MockLLMClient) Complete(ctx context.Context, req task.LLMRequest) (task.LLMResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Complete", ctx, req)
+	ret0, _ := ret[0].(task.LLMResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Complete indicates an expected call of Complete.
+func (mr *MockLLMClientMockRecorder) Complete(ctx, req interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Complete", reflect.TypeOf((*MockLLMClient)(nil).Complete), ctx, req)
+}
+
+// MockTenantResolver is a mock of TenantResolver interface.
+type MockTenantResolver struct {
+	ctrl     *gomock.Controller
+	recorder *MockTenantResolverMockRecorder
+}
+
+// MockTenantResolverMockRecorder is the mock recorder for MockTenantResolver.
+type MockTenantResolverMockRecorder struct {
+	mock *MockTenantResolver
+}
+
+// NewMockTenantResolver creates a new mock instance.
+func NewMockTenantResolver(ctrl *gomock.Controller) *MockTenantResolver {
+	mock := &MockTenantResolver{ctrl: ctrl}
+	mock.recorder = &MockTenantResolverMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockTenantResolver) EXPECT() *MockTenantResolverMockRecorder {
+	return m.recorder
+}
+
+// ResolveTenant mocks base method.
+func (m *MockTenantResolver) ResolveTenant(ctx context.Context, userID shared.UserID) (shared.TenantID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveTenant", ctx, userID)
+	ret0, _ := ret[0].(shared.TenantID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveTenant indicates an expected call of ResolveTenant.
+func (mr *MockTenantResolverMockRecorder) ResolveTenant(ctx, userID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveTenant", reflect.TypeOf((*MockTenantResolver)(nil).ResolveTenant), ctx, userID)
 }

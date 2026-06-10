@@ -11,10 +11,21 @@ import (
 )
 
 type Querier interface {
-	CountJobRuns(ctx context.Context) (int64, error)
-	FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]JobRun, error)
-	GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error)
-	GetJobRunByID(ctx context.Context, id pgtype.UUID) (JobRun, error)
+	AdjustDailyLLMCost(ctx context.Context, arg AdjustDailyLLMCostParams) error
+	BeginIdempotency(ctx context.Context, arg BeginIdempotencyParams) (int64, error)
+	CancelPendingJobRuns(ctx context.Context, arg CancelPendingJobRunsParams) ([]CancelPendingJobRunsRow, error)
+	CompleteIdempotency(ctx context.Context, arg CompleteIdempotencyParams) (int64, error)
+	CountActiveRecurringJobs(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountActiveRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountJobRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountJobRunsByJob(ctx context.Context, arg CountJobRunsByJobParams) (int64, error)
+	CountJobsCreatedSince(ctx context.Context, arg CountJobsCreatedSinceParams) (int64, error)
+	FindChildJobs(ctx context.Context, arg FindChildJobsParams) ([]FindChildJobsRow, error)
+	FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]FindDueJobRunsRow, error)
+	GetIdempotency(ctx context.Context, idempotencyKey string) (GetIdempotencyRow, error)
+	GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error)
+	GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunByIDRow, error)
+	GetTenantQuota(ctx context.Context, tenantID pgtype.UUID) (GetTenantQuotaRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	InsertJob(ctx context.Context, arg InsertJobParams) error
@@ -22,8 +33,12 @@ type Querier interface {
 	InsertJobRunIfAbsent(ctx context.Context, arg InsertJobRunIfAbsentParams) (int64, error)
 	InsertRunEvent(ctx context.Context, arg InsertRunEventParams) error
 	InsertUser(ctx context.Context, arg InsertUserParams) error
-	ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]JobRun, error)
+	ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]ListJobRunsRow, error)
+	ListJobRunsByJob(ctx context.Context, arg ListJobRunsByJobParams) ([]ListJobRunsByJobRow, error)
+	ListRunEventsByRun(ctx context.Context, arg ListRunEventsByRunParams) ([]ListRunEventsByRunRow, error)
 	ListTerminalRecurringRuns(ctx context.Context, arg ListTerminalRecurringRunsParams) ([]ListTerminalRecurringRunsRow, error)
+	ReserveDailyLLMCost(ctx context.Context, arg ReserveDailyLLMCostParams) (int32, error)
+	TryMarkJobRunRunning(ctx context.Context, arg TryMarkJobRunRunningParams) (bool, error)
 	UpdateJobRunStatus(ctx context.Context, arg UpdateJobRunStatusParams) (int64, error)
 	UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) error
 }

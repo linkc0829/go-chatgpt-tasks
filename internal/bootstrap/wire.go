@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -10,6 +11,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/auth"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/config"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/metrics"
+	"github.com/linkc0829/go-chatgpt-tasks/internal/shared"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/task"
 	"github.com/linkc0829/go-chatgpt-tasks/internal/user"
 )
@@ -24,8 +28,12 @@ func wireFeatures(
 	pool *pgxpool.Pool,
 	rdb *redis.Client,
 	authMgr *auth.Manager,
+	metricsReg *metrics.Registry,
 	lg *zap.Logger,
-) []task.Runner {
+	quotaCfg config.QuotaConfig,
+	llmCfg config.LLMConfig,
+	taskCfg config.TaskConfig,
+) []runner {
 	api := engine.Group("/api/v1")
 
 	// ------------------------------------------------------------------
@@ -38,14 +46,31 @@ func wireFeatures(
 	user.RegisterRoutes(api, userHandler, authMgr)
 
 	taskRepo := task.NewPostgresRepo(pool)
+	taskQuota := task.NewQuotaRepo(pool, task.Quota{
+		MaxJobsPerHour:       quotaCfg.MaxJobsPerHour,
+		MaxActiveRecurring:   quotaCfg.MaxActiveRecurring,
+		MaxConcurrentRuns:    quotaCfg.MaxConcurrentRuns,
+		MaxDailyLLMCostCents: quotaCfg.MaxDailyLLMCostCents,
+	})
+	taskMetrics := task.NewMetrics(metricsReg.Prometheus(), lg)
+	taskSvc := task.NewService(taskRepo, taskQuota, taskMetrics)
+	taskResolver := task.TenantResolverFunc(func(_ context.Context, uid shared.UserID) (shared.TenantID, error) {
+		return shared.ParseTenantID(uid.String())
+	})
+	taskHandler := task.NewHandler(taskSvc, taskResolver)
+	task.RegisterRoutes(api, taskHandler, authMgr)
+
 	taskQueue := task.NewRedisQueue(rdb)
 	watcher := task.NewWatcher(taskRepo, taskQueue, 5*time.Second, lg)
-	exec := task.NewStubExecutor(lg)
-
-	const workerCount = 3
-	runners := []task.Runner{watcher}
-	for i := 0; i < workerCount; i++ {
-		runners = append(runners, task.NewWorker(fmt.Sprintf("worker-%d", i), taskRepo, taskQueue, exec, lg))
+	baseExec := task.NewLLMExecutor(taskRepo, taskQuota, task.NewFakeLLMClient(), task.LLMPolicy{
+		TimeoutSeconds: llmCfg.TimeoutSeconds, MaxRetries: llmCfg.MaxRetries,
+		MaxInputTokens: llmCfg.MaxInputTokens, MaxOutputTokens: llmCfg.MaxOutputTokens,
+		MaxCostCents: llmCfg.MaxCostCents, OutputSchema: llmCfg.OutputSchema,
+	}, taskMetrics)
+	exec := task.NewIdempotentExecutor(taskRepo, task.NewIdempotencyStore(pool), baseExec, lg)
+	runners := []runner{watcher}
+	for i := 0; i < taskCfg.WorkerCount; i++ {
+		runners = append(runners, task.NewWorker(fmt.Sprintf("worker-%d", i), taskRepo, taskQueue, taskQuota, exec, lg, taskMetrics))
 	}
 	runners = append(runners, task.NewRecurringWatcher(taskRepo, 10*time.Second, lg))
 	return runners

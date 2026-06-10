@@ -50,7 +50,22 @@ func (rw *RecurringWatcher) scanOnce(ctx context.Context) {
 	}
 
 	for _, spec := range specs {
-		next, err := NewJobRun(spec.JobID, spec.Sequence+1, spec.ScheduledAt.Add(spec.Interval))
+		rule, err := ParseRule(spec.RecurrenceRule)
+		if err != nil {
+			rw.log.Error("recurring watcher parse rule", zap.Error(err))
+			continue
+		}
+		tz, err := time.LoadLocation(spec.TimezoneID)
+		if err != nil {
+			rw.log.Error("recurring watcher load timezone", zap.Error(err))
+			continue
+		}
+		scheduledAt, note, err := NextOccurrence(rule, spec.LocalTime, tz, spec.ScheduledAt)
+		if err != nil {
+			rw.log.Error("recurring watcher compute next occurrence", zap.Error(err))
+			continue
+		}
+		next, err := NewJobRun(spec.TenantID, spec.JobID, spec.Sequence+1, scheduledAt)
 		if err != nil {
 			rw.log.Error("recurring watcher build next run", zap.Error(err))
 			continue
@@ -61,6 +76,16 @@ func (rw *RecurringWatcher) scanOnce(ctx context.Context) {
 			continue
 		}
 		if created {
+			if note != "" {
+				_ = rw.repo.AppendEvent(cctx, NewRunEvent(
+					next.TenantID(),
+					next.JobID(),
+					next.ID(),
+					next.Status(),
+					EventJobRunCreated,
+					map[string]any{"dst_note": string(note)},
+				))
+			}
 			rw.log.Info(
 				"recurring watcher created next run",
 				zap.String("job_id", spec.JobID.String()),

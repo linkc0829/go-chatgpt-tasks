@@ -7,10 +7,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type Runner interface {
-	Run(ctx context.Context) error
-}
-
 type Watcher struct {
 	repo     Repo
 	queue    Queue
@@ -68,10 +64,24 @@ func (w *Watcher) scanOnce(ctx context.Context) {
 			}
 
 			if err := w.queue.Enqueue(cctx, JobRunMsg{
-				JobRunID: run.ID().String(),
-				Attempts: run.Attempts(),
+				JobRunID:       run.ID().String(),
+				TenantID:       run.TenantID().String(),
+				IdempotencyKey: run.IdempotencyKey(),
+				Attempts:       run.Attempts(),
 			}); err != nil {
 				w.log.Error("watcher enqueue", zap.Error(err))
+				if revertErr := run.MarkPending(); revertErr != nil {
+					w.log.Error("watcher restore pending", zap.Error(revertErr))
+					continue
+				}
+				if revertErr := w.repo.UpdateRunStatus(cctx, run); revertErr != nil {
+					w.log.Error("watcher persist restored pending", zap.Error(revertErr))
+				}
+				continue
+			}
+			event := NewRunEvent(run.TenantID(), run.JobID(), run.ID(), run.Status(), EventJobRunEnqueued, nil)
+			if err := w.repo.AppendEvent(cctx, event); err != nil {
+				w.log.Error("watcher append enqueued event", zap.String("job_run_id", run.ID().String()), zap.Error(err))
 			}
 		}
 	}

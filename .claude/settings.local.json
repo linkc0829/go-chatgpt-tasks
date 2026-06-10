@@ -4,7 +4,12 @@
       "Bash(~/go/bin/sqlc generate *)",
       "Bash(git add *)",
       "Bash(where.exe docker *)",
-      "Bash(docker --version)"
+      "Bash(docker --version)",
+      "Bash(rg -n \"EventQuotaRejected|EventQuotaDeferred|quota.rejected|quota.deferred\" internal/task/*.go)",
+      "Bash(rg -n \"CREATE TABLE jobs\" -A 25 migrations/0001_*.up.sql)",
+      "Bash(gh pr *)",
+      "Bash(git push *)",
+      "Bash(git -C \"C:/Users/ken2_lin/wt/chatgpt-tasks/2026-06-08-production-improvement-spec\" push origin 2026-06-08-production-improvement-spec)"
     ]
   }
 }

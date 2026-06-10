@@ -16,6 +16,7 @@ security:
 tags:
   - name: auth
   - name: users
+  - name: jobs
 
 paths:
   /healthz:
@@ -75,6 +76,108 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/UserResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/jobs:
+    post:
+      tags: [jobs]
+      summary: Create a scheduled job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateJobRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    get:
+      tags: [jobs]
+      summary: List scheduled job runs
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListRunsResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/jobs/{id}:
+    get:
+      tags: [jobs]
+      summary: Get scheduled job status and latest run
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/jobs/{id}/runs:
+    get:
+      tags: [jobs]
+      summary: List runs for a scheduled job
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListRunsResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/jobs/{id}/cancel:
+    post:
+      tags: [jobs]
+      summary: Cancel all pending runs for a scheduled job
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CancelJobResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/runs/{id}/events:
+    get:
+      tags: [jobs]
+      summary: List lifecycle events for a job run
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListEventsResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
 components:
   securitySchemes:
@@ -142,3 +245,84 @@ components:
       properties:
         user:  { $ref: "#/components/schemas/UserResponse" }
         token: { type: string }
+
+    CreateJobRequest:
+      type: object
+      required: [description]
+      properties:
+        description: { type: string, minLength: 1 }
+        scheduled_at: { type: string, format: date-time }
+        recurring_interval_seconds: { type: integer, minimum: 1 }
+        schedule_type: { type: string, enum: [one_off, recurring] }
+        recurrence_rule: { type: string, example: "FREQ=DAILY" }
+        local_time: { type: string, example: "08:00" }
+        timezone_id: { type: string, example: "Asia/Taipei" }
+        original_user_text: { type: string }
+        side_effecting: { type: boolean, default: false }
+        idempotency_scope: { type: string, default: job_run }
+        parent_job_id: { type: string, format: uuid }
+        trigger_on_parent_status: { type: string, enum: [success, failed, cancelled] }
+        job_type: { type: string, enum: [generic_llm], default: generic_llm }
+
+    CancelJobResponse:
+      type: object
+      properties:
+        job_id: { type: string, format: uuid }
+        cancelled_runs: { type: integer }
+        running_runs_unaffected: { type: boolean }
+
+    RunResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        job_id: { type: string, format: uuid }
+        status: { type: string }
+        scheduled_at: { type: string, format: date-time }
+        sequence: { type: integer }
+        attempts: { type: integer }
+        error_code: { type: string }
+        error_message: { type: string }
+        started_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        failed_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        schedule_type: { type: string }
+        recurrence_rule: { type: string }
+        local_time: { type: string }
+        timezone_id: { type: string }
+        next_run_at_utc: { type: string, format: date-time }
+        parent_job_id: { type: string, format: uuid }
+        children:
+          type: array
+          items: { type: string, format: uuid }
+
+    ListRunsResponse:
+      type: object
+      properties:
+        runs:
+          type: array
+          items: { $ref: "#/components/schemas/RunResponse" }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+
+    RunEventResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        job_id: { type: string, format: uuid }
+        job_run_id: { type: string, format: uuid }
+        status: { type: string }
+        event_type: { type: string }
+        payload: { type: object }
+        created_at: { type: string, format: date-time }
+
+    ListEventsResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/RunEventResponse" }

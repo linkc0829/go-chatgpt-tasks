@@ -20,14 +20,32 @@ type recurringWatcherRepo struct {
 
 func (r *recurringWatcherRepo) SaveJob(context.Context, *Job) error    { return nil }
 func (r *recurringWatcherRepo) SaveRun(context.Context, *JobRun) error { return nil }
+func (r *recurringWatcherRepo) CreateJobWithRun(context.Context, *Job, *JobRun, []*RunEvent) error {
+	return nil
+}
 func (r *recurringWatcherRepo) UpdateRunStatus(context.Context, *JobRun) error {
 	return nil
+}
+func (r *recurringWatcherRepo) PersistRunTransition(context.Context, *JobRun, *RunEvent) error {
+	return nil
+}
+func (r *recurringWatcherRepo) TryMarkRunRunning(context.Context, *JobRun, *RunEvent, int) (bool, error) {
+	return true, nil
+}
+func (r *recurringWatcherRepo) CancelPendingRunsByJob(context.Context, shared.TenantID, shared.JobID) ([]*JobRun, error) {
+	return nil, nil
 }
 func (r *recurringWatcherRepo) FindRunByID(context.Context, shared.JobRunID) (*JobRun, error) {
 	return nil, ErrJobRunNotFound
 }
-func (r *recurringWatcherRepo) ListRuns(context.Context, shared.Pagination) ([]*JobRun, int64, error) {
+func (r *recurringWatcherRepo) ListRuns(context.Context, shared.TenantID, shared.Pagination) ([]*JobRun, int64, error) {
 	return nil, 0, nil
+}
+func (r *recurringWatcherRepo) ListRunsByJob(context.Context, shared.TenantID, shared.JobID, shared.Pagination) ([]*JobRun, int64, error) {
+	return nil, 0, nil
+}
+func (r *recurringWatcherRepo) ListEvents(context.Context, shared.TenantID, shared.JobRunID) ([]*RunEvent, error) {
+	return nil, nil
 }
 func (r *recurringWatcherRepo) AppendEvent(context.Context, *RunEvent) error { return nil }
 func (r *recurringWatcherRepo) FindDueRuns(context.Context, int64, time.Time, int32) ([]*JobRun, error) {
@@ -35,6 +53,9 @@ func (r *recurringWatcherRepo) FindDueRuns(context.Context, int64, time.Time, in
 }
 func (r *recurringWatcherRepo) FindJob(context.Context, shared.JobID) (*Job, error) {
 	return nil, ErrJobNotFound
+}
+func (r *recurringWatcherRepo) FindChildren(context.Context, shared.JobID, Status) ([]*Job, error) {
+	return nil, nil
 }
 func (r *recurringWatcherRepo) InsertRunIfAbsent(_ context.Context, run *JobRun) (bool, error) {
 	if r.insertedErr != nil {
@@ -54,10 +75,13 @@ func (r *recurringWatcherRepo) FindTerminalRecurringRuns(
 func TestRecurringWatcher_scanOnceCreatesNextRun(t *testing.T) {
 	scheduledAt := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	spec := NextRunSpec{
-		JobID:       shared.NewJobID(),
-		Sequence:    1,
-		ScheduledAt: scheduledAt,
-		Interval:    5 * time.Second,
+		TenantID:       shared.NewTenantID(),
+		JobID:          shared.NewJobID(),
+		Sequence:       1,
+		ScheduledAt:    scheduledAt,
+		TimezoneID:     "UTC",
+		RecurrenceRule: "FREQ=DAILY",
+		LocalTime:      "09:00",
 	}
 	repo := &recurringWatcherRepo{specs: []NextRunSpec{spec}, created: true}
 	watcher := NewRecurringWatcher(repo, time.Hour, zap.NewNop())
@@ -74,7 +98,7 @@ func TestRecurringWatcher_scanOnceCreatesNextRun(t *testing.T) {
 	if got, want := run.Sequence(), 2; got != want {
 		t.Errorf("RecurringWatcher.scanOnce() sequence = %d, want %d", got, want)
 	}
-	if got, want := run.ScheduledAt(), scheduledAt.Add(5*time.Second); !got.Equal(want) {
+	if got, want := run.ScheduledAt(), scheduledAt.Add(24*time.Hour); !got.Equal(want) {
 		t.Errorf("RecurringWatcher.scanOnce() scheduled_at = %s, want %s", got, want)
 	}
 	if got, want := run.Status(), StatusPending; got != want {
@@ -84,10 +108,13 @@ func TestRecurringWatcher_scanOnceCreatesNextRun(t *testing.T) {
 
 func TestRecurringWatcher_scanOnceConflictIsNoop(t *testing.T) {
 	spec := NextRunSpec{
-		JobID:       shared.NewJobID(),
-		Sequence:    1,
-		ScheduledAt: time.Now().UTC(),
-		Interval:    5 * time.Second,
+		TenantID:       shared.NewTenantID(),
+		JobID:          shared.NewJobID(),
+		Sequence:       1,
+		ScheduledAt:    time.Now().UTC(),
+		TimezoneID:     "UTC",
+		RecurrenceRule: "FREQ=DAILY",
+		LocalTime:      "09:00",
 	}
 	repo := &recurringWatcherRepo{specs: []NextRunSpec{spec}, created: false}
 	watcher := NewRecurringWatcher(repo, time.Hour, zap.NewNop())

@@ -11,19 +11,322 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countJobRuns = `-- name: CountJobRuns :one
-SELECT COUNT(*) FROM job_runs
+const adjustDailyLLMCost = `-- name: AdjustDailyLLMCost :exec
+UPDATE tenant_llm_daily_cost
+SET cost_cents = cost_cents + $1
+WHERE tenant_id = $2
+  AND cost_date = $3
 `
 
-func (q *Queries) CountJobRuns(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countJobRuns)
+type AdjustDailyLLMCostParams struct {
+	DeltaCents int32
+	TenantID   pgtype.UUID
+	CostDate   string
+}
+
+func (q *Queries) AdjustDailyLLMCost(ctx context.Context, arg AdjustDailyLLMCostParams) error {
+	_, err := q.db.Exec(ctx, adjustDailyLLMCost, arg.DeltaCents, arg.TenantID, arg.CostDate)
+	return err
+}
+
+const beginIdempotency = `-- name: BeginIdempotency :execrows
+INSERT INTO idempotency_records (
+  idempotency_key, job_run_id, handler_name, status, created_at, updated_at
+)
+VALUES (
+  $1, $2, $3,
+  'in_progress', $4, $5
+)
+ON CONFLICT (idempotency_key) DO NOTHING
+`
+
+type BeginIdempotencyParams struct {
+	IdempotencyKey string
+	JobRunID       pgtype.UUID
+	HandlerName    string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) BeginIdempotency(ctx context.Context, arg BeginIdempotencyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, beginIdempotency,
+		arg.IdempotencyKey,
+		arg.JobRunID,
+		arg.HandlerName,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const cancelPendingJobRuns = `-- name: CancelPendingJobRuns :many
+UPDATE job_runs
+SET status = 'cancelled',
+    completed_at = $1,
+    updated_at = $2
+WHERE tenant_id = $3
+  AND job_id = $4
+  AND status IN ('pending', 'queued', 'retry')
+RETURNING id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
+          error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
+`
+
+type CancelPendingJobRunsParams struct {
+	CompletedAt pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	TenantID    pgtype.UUID
+	JobID       pgtype.UUID
+}
+
+type CancelPendingJobRunsRow struct {
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) CancelPendingJobRuns(ctx context.Context, arg CancelPendingJobRunsParams) ([]CancelPendingJobRunsRow, error) {
+	rows, err := q.db.Query(ctx, cancelPendingJobRuns,
+		arg.CompletedAt,
+		arg.UpdatedAt,
+		arg.TenantID,
+		arg.JobID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CancelPendingJobRunsRow{}
+	for rows.Next() {
+		var i CancelPendingJobRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.JobID,
+			&i.Sequence,
+			&i.Status,
+			&i.ScheduledAt,
+			&i.TimeBucket,
+			&i.Attempts,
+			&i.IdempotencyKey,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.FailedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const completeIdempotency = `-- name: CompleteIdempotency :execrows
+UPDATE idempotency_records
+SET status = 'completed',
+    response_hash = $1,
+    updated_at = $2
+WHERE idempotency_key = $3
+`
+
+type CompleteIdempotencyParams struct {
+	ResponseHash   *string
+	UpdatedAt      pgtype.Timestamptz
+	IdempotencyKey string
+}
+
+func (q *Queries) CompleteIdempotency(ctx context.Context, arg CompleteIdempotencyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completeIdempotency, arg.ResponseHash, arg.UpdatedAt, arg.IdempotencyKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const countActiveRecurringJobs = `-- name: CountActiveRecurringJobs :one
+SELECT COUNT(*)
+FROM jobs j
+WHERE j.tenant_id = $1
+  AND j.kind = 'recurring'
+  AND EXISTS (
+    SELECT 1
+    FROM job_runs r
+    WHERE r.job_id = j.id
+      AND r.status NOT IN ('success', 'failed', 'cancelled')
+  )
+`
+
+func (q *Queries) CountActiveRecurringJobs(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveRecurringJobs, tenantID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
+const countActiveRuns = `-- name: CountActiveRuns :one
+SELECT COUNT(*)
+FROM job_runs
+WHERE tenant_id = $1
+  AND status IN ('queued', 'running', 'retry')
+`
+
+func (q *Queries) CountActiveRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveRuns, tenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countJobRuns = `-- name: CountJobRuns :one
+SELECT COUNT(*) FROM job_runs WHERE tenant_id = $1
+`
+
+func (q *Queries) CountJobRuns(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countJobRuns, tenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countJobRunsByJob = `-- name: CountJobRunsByJob :one
+SELECT COUNT(*) FROM job_runs
+WHERE tenant_id = $1
+  AND job_id = $2
+`
+
+type CountJobRunsByJobParams struct {
+	TenantID pgtype.UUID
+	JobID    pgtype.UUID
+}
+
+func (q *Queries) CountJobRunsByJob(ctx context.Context, arg CountJobRunsByJobParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countJobRunsByJob, arg.TenantID, arg.JobID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countJobsCreatedSince = `-- name: CountJobsCreatedSince :one
+SELECT COUNT(*)
+FROM jobs
+WHERE tenant_id = $1
+  AND created_at >= $2
+`
+
+type CountJobsCreatedSinceParams struct {
+	TenantID pgtype.UUID
+	Since    pgtype.Timestamptz
+}
+
+func (q *Queries) CountJobsCreatedSince(ctx context.Context, arg CountJobsCreatedSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countJobsCreatedSince, arg.TenantID, arg.Since)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const findChildJobs = `-- name: FindChildJobs :many
+SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
+       scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+       side_effecting, idempotency_scope, parent_job_id, trigger_on_parent_status, job_type,
+       created_at, updated_at
+FROM jobs
+WHERE parent_job_id = $1
+  AND trigger_on_parent_status = $2
+ORDER BY created_at
+`
+
+type FindChildJobsParams struct {
+	ParentJobID           pgtype.UUID
+	TriggerOnParentStatus *string
+}
+
+type FindChildJobsRow struct {
+	ID                    pgtype.UUID
+	TenantID              pgtype.UUID
+	UserID                pgtype.UUID
+	Kind                  string
+	Description           string
+	IntervalSeconds       int64
+	ScheduleType          string
+	ScheduledAtUtc        pgtype.Timestamptz
+	RecurrenceRule        *string
+	LocalTime             *string
+	TimezoneID            string
+	OriginalUserText      *string
+	SideEffecting         bool
+	IdempotencyScope      string
+	ParentJobID           pgtype.UUID
+	TriggerOnParentStatus *string
+	JobType               string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+}
+
+func (q *Queries) FindChildJobs(ctx context.Context, arg FindChildJobsParams) ([]FindChildJobsRow, error) {
+	rows, err := q.db.Query(ctx, findChildJobs, arg.ParentJobID, arg.TriggerOnParentStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindChildJobsRow{}
+	for rows.Next() {
+		var i FindChildJobsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.UserID,
+			&i.Kind,
+			&i.Description,
+			&i.IntervalSeconds,
+			&i.ScheduleType,
+			&i.ScheduledAtUtc,
+			&i.RecurrenceRule,
+			&i.LocalTime,
+			&i.TimezoneID,
+			&i.OriginalUserText,
+			&i.SideEffecting,
+			&i.IdempotencyScope,
+			&i.ParentJobID,
+			&i.TriggerOnParentStatus,
+			&i.JobType,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findDueJobRuns = `-- name: FindDueJobRuns :many
-SELECT id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
+       error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs
 WHERE time_bucket <= $1
   AND status = 'pending'
@@ -38,23 +341,49 @@ type FindDueJobRunsParams struct {
 	Lim        int32
 }
 
-func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]JobRun, error) {
+type FindDueJobRunsRow struct {
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) ([]FindDueJobRunsRow, error) {
 	rows, err := q.db.Query(ctx, findDueJobRuns, arg.TimeBucket, arg.DueBefore, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []JobRun{}
+	items := []FindDueJobRunsRow{}
 	for rows.Next() {
-		var i JobRun
+		var i FindDueJobRunsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.TenantID,
 			&i.JobID,
 			&i.Sequence,
 			&i.Status,
 			&i.ScheduledAt,
 			&i.TimeBucket,
 			&i.Attempts,
+			&i.IdempotencyKey,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.FailedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -68,19 +397,83 @@ func (q *Queries) FindDueJobRuns(ctx context.Context, arg FindDueJobRunsParams) 
 	return items, nil
 }
 
+const getIdempotency = `-- name: GetIdempotency :one
+SELECT idempotency_key, handler_name, status, response_hash
+FROM idempotency_records
+WHERE idempotency_key = $1
+`
+
+type GetIdempotencyRow struct {
+	IdempotencyKey string
+	HandlerName    string
+	Status         string
+	ResponseHash   *string
+}
+
+func (q *Queries) GetIdempotency(ctx context.Context, idempotencyKey string) (GetIdempotencyRow, error) {
+	row := q.db.QueryRow(ctx, getIdempotency, idempotencyKey)
+	var i GetIdempotencyRow
+	err := row.Scan(
+		&i.IdempotencyKey,
+		&i.HandlerName,
+		&i.Status,
+		&i.ResponseHash,
+	)
+	return i, err
+}
+
 const getJobByID = `-- name: GetJobByID :one
-SELECT id, kind, description, interval_seconds, created_at, updated_at
+SELECT id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
+       scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+       side_effecting, idempotency_scope,
+       parent_job_id, trigger_on_parent_status, job_type,
+       created_at, updated_at
 FROM jobs WHERE id = $1
 `
 
-func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error) {
+type GetJobByIDRow struct {
+	ID                    pgtype.UUID
+	TenantID              pgtype.UUID
+	UserID                pgtype.UUID
+	Kind                  string
+	Description           string
+	IntervalSeconds       int64
+	ScheduleType          string
+	ScheduledAtUtc        pgtype.Timestamptz
+	RecurrenceRule        *string
+	LocalTime             *string
+	TimezoneID            string
+	OriginalUserText      *string
+	SideEffecting         bool
+	IdempotencyScope      string
+	ParentJobID           pgtype.UUID
+	TriggerOnParentStatus *string
+	JobType               string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+}
+
+func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error) {
 	row := q.db.QueryRow(ctx, getJobByID, id)
-	var i Job
+	var i GetJobByIDRow
 	err := row.Scan(
 		&i.ID,
+		&i.TenantID,
+		&i.UserID,
 		&i.Kind,
 		&i.Description,
 		&i.IntervalSeconds,
+		&i.ScheduleType,
+		&i.ScheduledAtUtc,
+		&i.RecurrenceRule,
+		&i.LocalTime,
+		&i.TimezoneID,
+		&i.OriginalUserText,
+		&i.SideEffecting,
+		&i.IdempotencyScope,
+		&i.ParentJobID,
+		&i.TriggerOnParentStatus,
+		&i.JobType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -88,48 +481,136 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error) {
 }
 
 const getJobRunByID = `-- name: GetJobRunByID :one
-SELECT id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
+       error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
 FROM job_runs WHERE id = $1
 `
 
-func (q *Queries) GetJobRunByID(ctx context.Context, id pgtype.UUID) (JobRun, error) {
+type GetJobRunByIDRow struct {
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) GetJobRunByID(ctx context.Context, id pgtype.UUID) (GetJobRunByIDRow, error) {
 	row := q.db.QueryRow(ctx, getJobRunByID, id)
-	var i JobRun
+	var i GetJobRunByIDRow
 	err := row.Scan(
 		&i.ID,
+		&i.TenantID,
 		&i.JobID,
 		&i.Sequence,
 		&i.Status,
 		&i.ScheduledAt,
 		&i.TimeBucket,
 		&i.Attempts,
+		&i.IdempotencyKey,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
+const getTenantQuota = `-- name: GetTenantQuota :one
+SELECT max_jobs_per_hour, max_active_recurring_jobs, max_concurrent_runs,
+       max_daily_llm_cost_cents
+FROM tenant_quotas
+WHERE tenant_id = $1
+`
+
+type GetTenantQuotaRow struct {
+	MaxJobsPerHour         int32
+	MaxActiveRecurringJobs int32
+	MaxConcurrentRuns      int32
+	MaxDailyLlmCostCents   int32
+}
+
+func (q *Queries) GetTenantQuota(ctx context.Context, tenantID pgtype.UUID) (GetTenantQuotaRow, error) {
+	row := q.db.QueryRow(ctx, getTenantQuota, tenantID)
+	var i GetTenantQuotaRow
+	err := row.Scan(
+		&i.MaxJobsPerHour,
+		&i.MaxActiveRecurringJobs,
+		&i.MaxConcurrentRuns,
+		&i.MaxDailyLlmCostCents,
+	)
+	return i, err
+}
+
 const insertJob = `-- name: InsertJob :exec
-INSERT INTO jobs (id, kind, description, interval_seconds, created_at, updated_at)
-VALUES ($1, $2, $3,
-        $4, $5, $6)
+INSERT INTO jobs (id, tenant_id, user_id, kind, description, interval_seconds, schedule_type,
+                  scheduled_at_utc, recurrence_rule, local_time, timezone_id, original_user_text,
+                  side_effecting, idempotency_scope,
+                  parent_job_id, trigger_on_parent_status, job_type,
+                  created_at, updated_at)
+VALUES ($1, $2, $3, $4,
+        $5, $6, $7,
+        $8, $9, $10,
+        $11, $12, $13,
+        $14, $15, $16,
+        $17,
+        $18, $19)
 `
 
 type InsertJobParams struct {
-	ID              pgtype.UUID
-	Kind            string
-	Description     string
-	IntervalSeconds int64
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID                    pgtype.UUID
+	TenantID              pgtype.UUID
+	UserID                pgtype.UUID
+	Kind                  string
+	Description           string
+	IntervalSeconds       int64
+	ScheduleType          string
+	ScheduledAtUtc        pgtype.Timestamptz
+	RecurrenceRule        *string
+	LocalTime             *string
+	TimezoneID            string
+	OriginalUserText      *string
+	SideEffecting         bool
+	IdempotencyScope      string
+	ParentJobID           pgtype.UUID
+	TriggerOnParentStatus *string
+	JobType               string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
 }
 
 func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 	_, err := q.db.Exec(ctx, insertJob,
 		arg.ID,
+		arg.TenantID,
+		arg.UserID,
 		arg.Kind,
 		arg.Description,
 		arg.IntervalSeconds,
+		arg.ScheduleType,
+		arg.ScheduledAtUtc,
+		arg.RecurrenceRule,
+		arg.LocalTime,
+		arg.TimezoneID,
+		arg.OriginalUserText,
+		arg.SideEffecting,
+		arg.IdempotencyScope,
+		arg.ParentJobID,
+		arg.TriggerOnParentStatus,
+		arg.JobType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -137,34 +618,51 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 }
 
 const insertJobRun = `-- name: InsertJobRun :exec
-INSERT INTO job_runs (id, job_id, sequence, status, scheduled_at, time_bucket,
-                      attempts, created_at, updated_at)
+INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
+                      attempts, idempotency_key, error_code, error_message, started_at, completed_at, failed_at,
+                      created_at, updated_at)
 VALUES ($1, $2, $3, $4,
         $5, $6, $7,
-        $8, $9)
+        $8, $9, $10, $11,
+        $12, $13, $14,
+        $15, $16)
 `
 
 type InsertJobRunParams struct {
-	ID          pgtype.UUID
-	JobID       pgtype.UUID
-	Sequence    int32
-	Status      string
-	ScheduledAt pgtype.Timestamptz
-	TimeBucket  int64
-	Attempts    int32
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) error {
 	_, err := q.db.Exec(ctx, insertJobRun,
 		arg.ID,
+		arg.TenantID,
 		arg.JobID,
 		arg.Sequence,
 		arg.Status,
 		arg.ScheduledAt,
 		arg.TimeBucket,
 		arg.Attempts,
+		arg.IdempotencyKey,
+		arg.ErrorCode,
+		arg.ErrorMessage,
+		arg.StartedAt,
+		arg.CompletedAt,
+		arg.FailedAt,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -172,31 +670,37 @@ func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) erro
 }
 
 const insertJobRunIfAbsent = `-- name: InsertJobRunIfAbsent :execrows
-INSERT INTO job_runs (id, job_id, sequence, status, scheduled_at, time_bucket,
-                      attempts, created_at, updated_at)
-VALUES ($1, $2, $3, 'pending',
-        $4, $5, 0,
-        $6, $7)
+INSERT INTO job_runs (id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket,
+                      attempts, idempotency_key, error_code, error_message, started_at, completed_at, failed_at,
+                      created_at, updated_at)
+VALUES ($1, $2, $3, $4, 'pending',
+        $5, $6, 0, $7,
+        NULL, NULL, NULL, NULL, NULL,
+        $8, $9)
 ON CONFLICT (job_id, sequence) DO NOTHING
 `
 
 type InsertJobRunIfAbsentParams struct {
-	ID          pgtype.UUID
-	JobID       pgtype.UUID
-	Sequence    int32
-	ScheduledAt pgtype.Timestamptz
-	TimeBucket  int64
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	IdempotencyKey string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) InsertJobRunIfAbsent(ctx context.Context, arg InsertJobRunIfAbsentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, insertJobRunIfAbsent,
 		arg.ID,
+		arg.TenantID,
 		arg.JobID,
 		arg.Sequence,
 		arg.ScheduledAt,
 		arg.TimeBucket,
+		arg.IdempotencyKey,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -207,57 +711,227 @@ func (q *Queries) InsertJobRunIfAbsent(ctx context.Context, arg InsertJobRunIfAb
 }
 
 const insertRunEvent = `-- name: InsertRunEvent :exec
-INSERT INTO run_events (id, job_run_id, status, created_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO run_events (id, tenant_id, job_id, job_run_id, status, event_type, event_payload, created_at)
+VALUES ($1, $2, $3, $4,
+        $5, $6, $7, $8)
 `
 
 type InsertRunEventParams struct {
-	ID        pgtype.UUID
-	JobRunID  pgtype.UUID
-	Status    string
-	CreatedAt pgtype.Timestamptz
+	ID           pgtype.UUID
+	TenantID     pgtype.UUID
+	JobID        pgtype.UUID
+	JobRunID     pgtype.UUID
+	Status       string
+	EventType    string
+	EventPayload []byte
+	CreatedAt    pgtype.Timestamptz
 }
 
 func (q *Queries) InsertRunEvent(ctx context.Context, arg InsertRunEventParams) error {
 	_, err := q.db.Exec(ctx, insertRunEvent,
 		arg.ID,
+		arg.TenantID,
+		arg.JobID,
 		arg.JobRunID,
 		arg.Status,
+		arg.EventType,
+		arg.EventPayload,
 		arg.CreatedAt,
 	)
 	return err
 }
 
 const listJobRuns = `-- name: ListJobRuns :many
-SELECT id, job_id, sequence, status, scheduled_at, time_bucket, attempts, created_at, updated_at
-FROM job_runs ORDER BY created_at DESC
-LIMIT $2 OFFSET $1
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
+       error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
+FROM job_runs
+WHERE tenant_id = $1
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $2
 `
 
 type ListJobRunsParams struct {
+	TenantID   pgtype.UUID
 	PageOffset int32
 	PageLimit  int32
 }
 
-func (q *Queries) ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]JobRun, error) {
-	rows, err := q.db.Query(ctx, listJobRuns, arg.PageOffset, arg.PageLimit)
+type ListJobRunsRow struct {
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]ListJobRunsRow, error) {
+	rows, err := q.db.Query(ctx, listJobRuns, arg.TenantID, arg.PageOffset, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []JobRun{}
+	items := []ListJobRunsRow{}
 	for rows.Next() {
-		var i JobRun
+		var i ListJobRunsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.TenantID,
 			&i.JobID,
 			&i.Sequence,
 			&i.Status,
 			&i.ScheduledAt,
 			&i.TimeBucket,
 			&i.Attempts,
+			&i.IdempotencyKey,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.FailedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listJobRunsByJob = `-- name: ListJobRunsByJob :many
+SELECT id, tenant_id, job_id, sequence, status, scheduled_at, time_bucket, attempts, idempotency_key,
+       error_code, error_message, started_at, completed_at, failed_at, created_at, updated_at
+FROM job_runs
+WHERE tenant_id = $1
+  AND job_id = $2
+ORDER BY sequence DESC
+LIMIT $4 OFFSET $3
+`
+
+type ListJobRunsByJobParams struct {
+	TenantID   pgtype.UUID
+	JobID      pgtype.UUID
+	PageOffset int32
+	PageLimit  int32
+}
+
+type ListJobRunsByJobRow struct {
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	Status         string
+	ScheduledAt    pgtype.Timestamptz
+	TimeBucket     int64
+	Attempts       int32
+	IdempotencyKey string
+	ErrorCode      *string
+	ErrorMessage   *string
+	StartedAt      pgtype.Timestamptz
+	CompletedAt    pgtype.Timestamptz
+	FailedAt       pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) ListJobRunsByJob(ctx context.Context, arg ListJobRunsByJobParams) ([]ListJobRunsByJobRow, error) {
+	rows, err := q.db.Query(ctx, listJobRunsByJob,
+		arg.TenantID,
+		arg.JobID,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListJobRunsByJobRow{}
+	for rows.Next() {
+		var i ListJobRunsByJobRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.JobID,
+			&i.Sequence,
+			&i.Status,
+			&i.ScheduledAt,
+			&i.TimeBucket,
+			&i.Attempts,
+			&i.IdempotencyKey,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.FailedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunEventsByRun = `-- name: ListRunEventsByRun :many
+SELECT id, tenant_id, job_id, job_run_id, status, event_type, event_payload, created_at
+FROM run_events
+WHERE tenant_id = $1
+  AND job_run_id = $2
+ORDER BY created_at
+`
+
+type ListRunEventsByRunParams struct {
+	TenantID pgtype.UUID
+	JobRunID pgtype.UUID
+}
+
+type ListRunEventsByRunRow struct {
+	ID           pgtype.UUID
+	TenantID     pgtype.UUID
+	JobID        pgtype.UUID
+	JobRunID     pgtype.UUID
+	Status       string
+	EventType    string
+	EventPayload []byte
+	CreatedAt    pgtype.Timestamptz
+}
+
+func (q *Queries) ListRunEventsByRun(ctx context.Context, arg ListRunEventsByRunParams) ([]ListRunEventsByRunRow, error) {
+	rows, err := q.db.Query(ctx, listRunEventsByRun, arg.TenantID, arg.JobRunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRunEventsByRunRow{}
+	for rows.Next() {
+		var i ListRunEventsByRunRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.JobID,
+			&i.JobRunID,
+			&i.Status,
+			&i.EventType,
+			&i.EventPayload,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -270,7 +944,8 @@ func (q *Queries) ListJobRuns(ctx context.Context, arg ListJobRunsParams) ([]Job
 }
 
 const listTerminalRecurringRuns = `-- name: ListTerminalRecurringRuns :many
-SELECT r.id, r.job_id, r.sequence, r.scheduled_at, j.interval_seconds
+SELECT r.id, r.tenant_id, r.job_id, r.sequence, r.scheduled_at,
+       j.timezone_id, j.recurrence_rule, j.local_time
 FROM run_events e
 JOIN job_runs r ON r.id = e.job_run_id
 JOIN jobs     j ON j.id = r.job_id
@@ -289,11 +964,14 @@ type ListTerminalRecurringRunsParams struct {
 }
 
 type ListTerminalRecurringRunsRow struct {
-	ID              pgtype.UUID
-	JobID           pgtype.UUID
-	Sequence        int32
-	ScheduledAt     pgtype.Timestamptz
-	IntervalSeconds int64
+	ID             pgtype.UUID
+	TenantID       pgtype.UUID
+	JobID          pgtype.UUID
+	Sequence       int32
+	ScheduledAt    pgtype.Timestamptz
+	TimezoneID     string
+	RecurrenceRule *string
+	LocalTime      *string
 }
 
 func (q *Queries) ListTerminalRecurringRuns(ctx context.Context, arg ListTerminalRecurringRunsParams) ([]ListTerminalRecurringRunsRow, error) {
@@ -307,10 +985,13 @@ func (q *Queries) ListTerminalRecurringRuns(ctx context.Context, arg ListTermina
 		var i ListTerminalRecurringRunsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.TenantID,
 			&i.JobID,
 			&i.Sequence,
 			&i.ScheduledAt,
-			&i.IntervalSeconds,
+			&i.TimezoneID,
+			&i.RecurrenceRule,
+			&i.LocalTime,
 		); err != nil {
 			return nil, err
 		}
@@ -322,23 +1003,111 @@ func (q *Queries) ListTerminalRecurringRuns(ctx context.Context, arg ListTermina
 	return items, nil
 }
 
+const reserveDailyLLMCost = `-- name: ReserveDailyLLMCost :one
+INSERT INTO tenant_llm_daily_cost (tenant_id, cost_date, cost_cents)
+VALUES ($1, $2, $3)
+ON CONFLICT (tenant_id, cost_date) DO UPDATE
+  SET cost_cents = tenant_llm_daily_cost.cost_cents + EXCLUDED.cost_cents
+  WHERE tenant_llm_daily_cost.cost_cents + EXCLUDED.cost_cents <= $4
+RETURNING cost_cents
+`
+
+type ReserveDailyLLMCostParams struct {
+	TenantID   pgtype.UUID
+	CostDate   string
+	CostCents  int32
+	LimitCents int32
+}
+
+func (q *Queries) ReserveDailyLLMCost(ctx context.Context, arg ReserveDailyLLMCostParams) (int32, error) {
+	row := q.db.QueryRow(ctx, reserveDailyLLMCost,
+		arg.TenantID,
+		arg.CostDate,
+		arg.CostCents,
+		arg.LimitCents,
+	)
+	var cost_cents int32
+	err := row.Scan(&cost_cents)
+	return cost_cents, err
+}
+
+const tryMarkJobRunRunning = `-- name: TryMarkJobRunRunning :one
+WITH tenant_lock AS (
+  SELECT pg_advisory_xact_lock(hashtextextended(CAST($1 AS UUID)::text, 0))
+),
+updated AS (
+  UPDATE job_runs r
+  SET status = 'running',
+      started_at = $2,
+      updated_at = $3
+  WHERE r.id = $4
+    AND r.status IN ('queued', 'retry')
+    AND (
+      SELECT COUNT(*)
+      FROM job_runs active_runs, tenant_lock
+      WHERE active_runs.tenant_id = $1
+        AND active_runs.status = 'running'
+    ) < CAST($5 AS BIGINT)
+  RETURNING 1
+)
+SELECT EXISTS(SELECT 1 FROM updated) AS acquired
+`
+
+type TryMarkJobRunRunningParams struct {
+	TenantID  pgtype.UUID
+	StartedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	ID        pgtype.UUID
+	RunLimit  int64
+}
+
+func (q *Queries) TryMarkJobRunRunning(ctx context.Context, arg TryMarkJobRunRunningParams) (bool, error) {
+	row := q.db.QueryRow(ctx, tryMarkJobRunRunning,
+		arg.TenantID,
+		arg.StartedAt,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.RunLimit,
+	)
+	var acquired bool
+	err := row.Scan(&acquired)
+	return acquired, err
+}
+
 const updateJobRunStatus = `-- name: UpdateJobRunStatus :execrows
 UPDATE job_runs
-SET status = $1, attempts = $2, updated_at = $3
-WHERE id = $4
+SET status = $1,
+    attempts = $2,
+    error_code = $3,
+    error_message = $4,
+    started_at = $5,
+    completed_at = $6,
+    failed_at = $7,
+    updated_at = $8
+WHERE id = $9
 `
 
 type UpdateJobRunStatusParams struct {
-	Status    string
-	Attempts  int32
-	UpdatedAt pgtype.Timestamptz
-	ID        pgtype.UUID
+	Status       string
+	Attempts     int32
+	ErrorCode    *string
+	ErrorMessage *string
+	StartedAt    pgtype.Timestamptz
+	CompletedAt  pgtype.Timestamptz
+	FailedAt     pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	ID           pgtype.UUID
 }
 
 func (q *Queries) UpdateJobRunStatus(ctx context.Context, arg UpdateJobRunStatusParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateJobRunStatus,
 		arg.Status,
 		arg.Attempts,
+		arg.ErrorCode,
+		arg.ErrorMessage,
+		arg.StartedAt,
+		arg.CompletedAt,
+		arg.FailedAt,
 		arg.UpdatedAt,
 		arg.ID,
 	)

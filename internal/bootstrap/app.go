@@ -26,8 +26,15 @@ import (
 	"github.com/linkc0829/go-chatgpt-tasks/internal/platform/otel"
 	pgplatform "github.com/linkc0829/go-chatgpt-tasks/internal/platform/postgres"
 	rdsplatform "github.com/linkc0829/go-chatgpt-tasks/internal/platform/redis"
-	"github.com/linkc0829/go-chatgpt-tasks/internal/task"
 )
+
+// runner is a long-lived background component supervised by the App. It is
+// defined here, at the consumer, rather than in the task package: the concrete
+// runners (*task.Watcher, *task.Worker, *task.RecurringWatcher) satisfy it
+// structurally, so task never needs to name this interface.
+type runner interface {
+	Run(ctx context.Context) error
+}
 
 // App holds every wired-up resource the api binary needs. main.go calls Run()
 // and Shutdown().
@@ -40,7 +47,7 @@ type App struct {
 	metricsReg   *metrics.Registry
 	server       *httpserver.Server
 	otelShutdown otel.ShutdownFunc
-	runners      []task.Runner
+	runners      []runner
 	bgCancel     context.CancelFunc
 	bgWG         sync.WaitGroup
 }
@@ -101,10 +108,11 @@ func NewApp(ctx context.Context, cfg *config.Config) (*App, error) {
 	// Health & metrics routes (no auth)
 	engine.GET("/healthz", metrics.Health())
 	engine.GET("/metrics", metricsReg.Handler())
+	httpserver.RegisterDemo(engine)
 
 	// ----- Wire feature slices -----------------------------------------
 	// All cross-feature port wiring happens in wire.go.
-	runners := wireFeatures(engine, pool, rdb, authMgr, lg)
+	runners := wireFeatures(engine, pool, rdb, authMgr, metricsReg, lg, cfg.Quota, cfg.LLM, cfg.Task)
 
 	// ----- HTTP server wrapper ------------------------------------------
 	srv := httpserver.Wrap(engine, httpserver.Config{Port: cfg.HTTP.Port}, lg)
@@ -131,14 +139,14 @@ func (a *App) Run() error {
 	bgCtx, cancel := context.WithCancel(context.Background())
 	a.bgCancel = cancel
 
-	for _, runner := range a.runners {
+	for _, r := range a.runners {
 		a.bgWG.Add(1)
-		go func(r task.Runner) {
+		go func(r runner) {
 			defer a.bgWG.Done()
 			if err := r.Run(bgCtx); err != nil && !errors.Is(err, context.Canceled) {
 				a.logger.Error("background runner stopped", zap.Error(err))
 			}
-		}(runner)
+		}(r)
 	}
 
 	return a.server.Start()

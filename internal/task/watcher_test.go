@@ -21,15 +21,33 @@ type watcherRepo struct {
 
 func (r *watcherRepo) SaveJob(context.Context, *Job) error    { return nil }
 func (r *watcherRepo) SaveRun(context.Context, *JobRun) error { return nil }
+func (r *watcherRepo) CreateJobWithRun(context.Context, *Job, *JobRun, []*RunEvent) error {
+	return nil
+}
 func (r *watcherRepo) UpdateRunStatus(_ context.Context, run *JobRun) error {
 	r.updatedRuns = append(r.updatedRuns, run)
 	return r.updateRunErr
 }
+func (r *watcherRepo) PersistRunTransition(context.Context, *JobRun, *RunEvent) error {
+	return nil
+}
+func (r *watcherRepo) TryMarkRunRunning(context.Context, *JobRun, *RunEvent, int) (bool, error) {
+	return true, nil
+}
+func (r *watcherRepo) CancelPendingRunsByJob(context.Context, shared.TenantID, shared.JobID) ([]*JobRun, error) {
+	return nil, nil
+}
 func (r *watcherRepo) FindRunByID(context.Context, shared.JobRunID) (*JobRun, error) {
 	return nil, ErrJobRunNotFound
 }
-func (r *watcherRepo) ListRuns(context.Context, shared.Pagination) ([]*JobRun, int64, error) {
+func (r *watcherRepo) ListRuns(context.Context, shared.TenantID, shared.Pagination) ([]*JobRun, int64, error) {
 	return nil, 0, nil
+}
+func (r *watcherRepo) ListRunsByJob(context.Context, shared.TenantID, shared.JobID, shared.Pagination) ([]*JobRun, int64, error) {
+	return nil, 0, nil
+}
+func (r *watcherRepo) ListEvents(context.Context, shared.TenantID, shared.JobRunID) ([]*RunEvent, error) {
+	return nil, nil
 }
 func (r *watcherRepo) AppendEvent(context.Context, *RunEvent) error { return nil }
 func (r *watcherRepo) FindDueRuns(context.Context, int64, time.Time, int32) ([]*JobRun, error) {
@@ -41,6 +59,9 @@ func (r *watcherRepo) FindDueRuns(context.Context, int64, time.Time, int32) ([]*
 }
 func (r *watcherRepo) FindJob(context.Context, shared.JobID) (*Job, error) {
 	return nil, ErrJobNotFound
+}
+func (r *watcherRepo) FindChildren(context.Context, shared.JobID, Status) ([]*Job, error) {
+	return nil, nil
 }
 func (r *watcherRepo) InsertRunIfAbsent(context.Context, *JobRun) (bool, error) {
 	return false, nil
@@ -126,6 +147,22 @@ func TestWatcher_scanOnceFindDueErrorDoesNotEnqueue(t *testing.T) {
 	}
 }
 
+func TestWatcher_scanOnceEnqueueFailureRestoresPending(t *testing.T) {
+	run := newWatcherRun(t)
+	repo := &watcherRepo{findDueRuns: []*JobRun{run}}
+	queue := &watcherQueue{err: errors.New("redis down")}
+	watcher := NewWatcher(repo, queue, time.Hour, zap.NewNop())
+
+	watcher.scanOnce(context.Background())
+
+	if got, want := run.Status(), StatusPending; got != want {
+		t.Errorf("Watcher.scanOnce(enqueue failure) status = %q, want %q", got, want)
+	}
+	if got, want := len(repo.updatedRuns), 2; got != want {
+		t.Errorf("Watcher.scanOnce(enqueue failure) updates = %d, want %d", got, want)
+	}
+}
+
 func TestWatcher_RunReturnsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -141,6 +178,7 @@ func newWatcherRun(t *testing.T) *JobRun {
 	t.Helper()
 
 	run, err := NewJobRun(
+		shared.NewTenantID(),
 		shared.NewJobID(),
 		1,
 		time.Now().UTC().Add(-time.Minute),

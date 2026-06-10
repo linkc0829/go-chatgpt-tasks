@@ -1,0 +1,46 @@
+groups:
+  - name: task-scheduler
+    rules:
+      - alert: TaskDLQDetected
+        expr: increase(task_dlq_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Task runs are entering the dead-letter queue
+
+      - alert: TaskFailureRateHigh
+        expr: |
+          sum(rate(task_runs_total{status="failed"}[10m]))
+          /
+          clamp_min(sum(rate(task_runs_total{status=~"success|failed"}[10m])), 0.001)
+          > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Task failure rate is above 10 percent
+
+      - alert: TaskLLMTimeoutSpike
+        expr: increase(task_llm_timeouts_total[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: LLM timeout rate has spiked
+
+      - alert: TaskLLMCostSpike
+        expr: increase(task_llm_cost_cents[1h]) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Hourly LLM cost exceeded the expected threshold
+
+      - alert: TaskQuotaRejectionSpike
+        expr: sum by (reason) (increase(task_quota_rejections_total[10m])) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Scheduler quota rejections are spiking (see logs for per-tenant attribution)
